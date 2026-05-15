@@ -22,7 +22,13 @@ function PrivateRoute({ children }) {
   )
   return user ? children : <Navigate to="/login" />
 }
-
+function GestorRoute({ children }) {
+  const { user, loading, isGestor } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" />
+  if (!isGestor) return <Navigate to="/dashboard" />
+  return children
+}
 export default function App() {
   return (
     <Routes>
@@ -31,8 +37,8 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="clientes" element={<Clientes />} />
-        <Route path="honorarios" element={<Honorarios />} />
-        <Route path="contas-pagar" element={<ContasPagar />} />
+        <<Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
+<Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
         <Route path="tarefas" element={<Tarefas />} />
         <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
