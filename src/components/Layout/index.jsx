@@ -8,7 +8,17 @@ import {
 } from 'lucide-react'
 
 const navItems = [
-  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
+  {const navItems = [
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
+  { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
+  { to: '/honorarios',   icon: DollarSign,       label: 'Honorários',     somenteGestor: true  },
+  { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar', somenteGestor: true  },
+  { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
+  { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
+  { to: '/agenda',       icon: Calendar,         label: 'Agenda',         somenteGestor: false },
+]
+
+const x_placeholder = , label: 'Dashboard' },
   { to: '/clientes',     icon: Users,            label: 'Clientes' },
   { to: '/honorarios',   icon: DollarSign,       label: 'Honorários' },
   { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar' },
