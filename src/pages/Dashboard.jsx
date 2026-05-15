@@ -1,205 +1,88 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../contexts/AuthContext'
+import { useState } from 'react'
+import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import {
-  DollarSign, TrendingUp, TrendingDown, AlertTriangle,
-  CheckSquare, Users, Calendar, ArrowRight, Loader2
+  LayoutDashboard, Users, DollarSign, CreditCard,
+  CheckSquare, Headphones, Calendar, LogOut,
+  Menu, X, Building2
 } from 'lucide-react'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 
-export default function Dashboard() {
-  const { profile, isGestor } = useAuth()
+const navItems = [
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
+  { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
+  { to: '/honorarios',   icon: DollarSign,       label: 'Honorários',     somenteGestor: true  },
+  { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar', somenteGestor: true  },
+  { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
+  { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
+  { to: '/agenda',       icon: Calendar,         label: 'Agenda',         somenteGestor: false },
+]
+
+export default function Layout() {
+  const { profile, signOut, isGestor } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const hoje = new Date()
-  const mesAtual = hoje.getMonth()
-  const anoAtual = hoje.getFullYear()
 
-  useEffect(() => { carregarDados() }, [])
-
-  async function carregarDados() {
-    setLoading(true)
-    const [clientes, despesas, tarefas, atendimentos, eventos] = await Promise.all([
-      supabase.from('clientes').select('*'),
-      supabase.from('despesas').select('*'),
-      supabase.from('tarefas').select('*'),
-      supabase.from('atendimentos').select('*').order('data', { ascending: false }).limit(5),
-      supabase.from('eventos').select('*').gte('data', format(hoje, 'yyyy-MM-dd')).order('data').limit(5),
-    ])
-    setData({
-      clientes: clientes.data || [],
-      despesas: despesas.data || [],
-      tarefas: tarefas.data || [],
-      atendimentos: atendimentos.data || [],
-      eventos: eventos.data || [],
-    })
-    setLoading(false)
+  async function handleSignOut() {
+    await signOut()
+    navigate('/login')
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+  const itensFiltrados = navItems.filter(item => !item.somenteGestor || isGestor)
+
+  const Sidebar = ({ mobile = false }) => (
+    <div className={`flex flex-col h-full ${mobile ? '' : 'w-64'}`}>
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
+        <img src="/logo.png" alt="CARSANT" className="h-10 w-auto rounded-lg" />
+      </div>
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {itensFiltrados.map(({ to, icon: Icon, label }) => (
+          <NavLink key={to} to={to}
+            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            onClick={() => mobile && setSidebarOpen(false)}>
+            <Icon className="w-4 h-4 flex-shrink-0" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+      <div className="px-4 py-4 border-t border-gray-100">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-semibold text-sm">
+            {profile?.nome?.charAt(0) || '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-gray-900 truncate">{profile?.nome || 'Usuário'}</div>
+            <div className="text-xs text-gray-500">{isGestor ? 'Gestor' : 'Colaborador'}</div>
+          </div>
+        </div>
+        <button onClick={handleSignOut} className="btn-ghost btn-sm w-full justify-start text-gray-500">
+          <LogOut className="w-4 h-4" /> Sair
+        </button>
+      </div>
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos } = data
-  const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
-  const hojeStr = format(hoje, 'yyyy-MM-dd')
-  const hoje7Str = format(hoje7, 'yyyy-MM-dd')
-
-  // KPIs
-  const totalHonorarios = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const inadimplentes = clientes.filter(c => c.status_pagamento === 'atraso')
-  const tarefasAtrasadas = tarefas.filter(t => t.status === 'atrasada')
-  const tarefasMinhas = isGestor ? tarefas : tarefas.filter(t => t.responsavel === profile?.nome)
-  const eventosProximos = eventos.filter(e => e.data >= hojeStr && e.data <= hoje7Str)
-
-  const totalDespesas = despesas.filter(d => d.recorrencia === 'mensal').reduce((s, d) => s + (d.valor || 0), 0)
-  const saldo = totalHonorarios - totalDespesas
-
-  const statusColor = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red', concluida: 'badge-green', andamento: 'badge-blue', atrasada: 'badge-red' }
-  const statusLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', concluida: 'Concluída', andamento: 'Andamento', atrasada: 'Atrasada' }
-  const fmt = v => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0 })
-
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Saudação */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Bom dia, {profile?.nome?.split(' ')[0] || 'usuário'} 👋
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {format(hoje, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-        </p>
-      </div>
-
-      {/* Alertas */}
-      {(tarefasAtrasadas.length > 0 || inadimplentes.length > 0) && (
-        <div className="space-y-2 mb-6">
-          {tarefasAtrasadas.length > 0 && (
-            <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>{tarefasAtrasadas.length} tarefa{tarefasAtrasadas.length > 1 ? 's' : ''} em atraso</span>
-              <button onClick={() => navigate('/tarefas')} className="ml-auto text-red-600 hover:text-red-800 font-medium flex items-center gap-1">
-                Ver <ArrowRight className="w-3 h-3" />
-              </button>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 flex-shrink-0">
+        <Sidebar />
+      </aside>
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl z-10">
+            <div className="flex justify-end p-4">
+              <button onClick={() => setSidebarOpen(false)} className="btn-ghost p-2"><X className="w-5 h-5" /></button>
             </div>
-          )}
-          {inadimplentes.length > 0 && (
-            <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>{inadimplentes.length} cliente{inadimplentes.length > 1 ? 's' : ''} com honorário em atraso</span>
-              <button onClick={() => navigate('/honorarios')} className="ml-auto text-yellow-700 hover:text-yellow-900 font-medium flex items-center gap-1">
-                Ver <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-          )}
+            <Sidebar mobile />
+          </aside>
         </div>
       )}
-
-      {/* Saldo */}
-      <div className={`rounded-2xl p-6 mb-6 flex items-center justify-between ${saldo >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-        <div>
-          <p className="text-sm font-medium text-gray-600">Saldo do mês — {format(hoje, 'MMMM/yyyy', { locale: ptBR })}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Honorários ({fmt(totalHonorarios)}) − Despesas ({fmt(totalDespesas)})</p>
-        </div>
-        <div className={`text-3xl font-bold flex items-center gap-2 ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-          {saldo >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-          {saldo < 0 ? '-' : ''}{fmt(Math.abs(saldo))}
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
-          <div className="stat-label">Total honorários/mês</div>
-          <div className="stat-value text-brand-700">{fmt(totalHonorarios)}</div>
-          <div className="stat-sub">{clientes.length} clientes</div>
-        </div>
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
-          <div className="stat-label">Em atraso</div>
-          <div className="stat-value text-red-600">{inadimplentes.length}</div>
-          <div className="stat-sub">clientes inadimplentes</div>
-        </div>
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/tarefas')}>
-          <div className="stat-label">Tarefas atrasadas</div>
-          <div className="stat-value text-red-600">{tarefasAtrasadas.length}</div>
-          <div className="stat-sub">de {tarefasMinhas.filter(t => t.status !== 'concluida').length} em aberto</div>
-        </div>
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/agenda')}>
-          <div className="stat-label">Eventos próximos</div>
-          <div className="stat-value text-brand-700">{eventosProximos.length}</div>
-          <div className="stat-sub">nos próximos 7 dias</div>
-        </div>
-      </div>
-
-      {/* Linha inferior */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tarefas recentes */}
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold text-gray-900">
-              <CheckSquare className="w-4 h-4 text-brand-600" />Tarefas em aberto
-            </div>
-            <button onClick={() => navigate('/tarefas')} className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
-              Ver todas <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {tarefasMinhas.filter(t => t.status !== 'concluida').slice(0, 5).map(t => (
-              <div key={t.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{t.descricao}</p>
-                  {t.cliente_nome && <p className="text-xs text-gray-500 truncate">{t.cliente_nome}</p>}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {t.prazo && <span className="text-xs text-gray-500">{t.prazo.split('-').reverse().join('/')}</span>}
-                  <span className={statusColor[t.status] || 'badge-gray'}>{statusLabel[t.status] || t.status}</span>
-                </div>
-              </div>
-            ))}
-            {tarefasMinhas.filter(t => t.status !== 'concluida').length === 0 && (
-              <div className="px-5 py-8 text-center text-sm text-gray-500">Nenhuma tarefa em aberto ✓</div>
-            )}
-          </div>
-        </div>
-
-        {/* Próximos eventos */}
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold text-gray-900">
-              <Calendar className="w-4 h-4 text-brand-600" />Próximos eventos
-            </div>
-            <button onClick={() => navigate('/agenda')} className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1">
-              Ver agenda <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {eventos.slice(0, 5).map(e => {
-              const corMap = { reuniao: 'bg-blue-100 text-blue-700', prazo: 'bg-red-100 text-red-700', visita: 'bg-yellow-100 text-yellow-700', outro: 'bg-gray-100 text-gray-600' }
-              return (
-                <div key={e.id} className="px-5 py-3 flex items-center gap-3">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${corMap[e.tipo] || corMap.outro}`}>
-                    {{ reuniao: 'Reunião', prazo: 'Prazo', visita: 'Visita', outro: 'Outro' }[e.tipo]}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{e.titulo}</p>
-                    {e.cliente_nome && <p className="text-xs text-gray-500 truncate">{e.cliente_nome}</p>}
-                  </div>
-                  <span className="text-xs text-gray-500 flex-shrink-0">
-                    {e.data.split('-').reverse().join('/')}{e.hora ? ' ' + e.hora : ''}
-                  </span>
-                </div>
-              )
-            })}
-            {eventos.length === 0 && (
-              <div className="px-5 py-8 text-center text-sm text-gray-500">Nenhum evento próximo</div>
-            )}
-          </div>
-        </div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200">
+          <button onClick={() => setSidebarOpen(true)} className="btn-ghost p-2"><Menu className="w-5 h-5" /></button>
+          <img src="/logo.png" alt="CARSANT" className="h-8 w-auto" />
+        </header>
+        <main className="flex-1 overflow-y-auto"><Outlet /></main>
       </div>
     </div>
   )
