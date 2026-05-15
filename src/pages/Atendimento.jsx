@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 
 const CANAIS = ['whatsapp','email','call','presencial','outro']
 const CANAL_LABEL = { whatsapp: '📱 WhatsApp', email: '📧 E-mail', call: '📞 Telefone', presencial: '🤝 Presencial', outro: '💬 Outro' }
-const COLABS = ['Carlos','Ana','Pedro','Maria']
+const COLABS = ['Ronaldo','Bruno','Karine','Cintia','Ronaldo Contador']
 const emptyForm = { cliente_nome: '', canal: 'whatsapp', data: format(new Date(), 'yyyy-MM-dd'), responsavel: 'Carlos', assunto: '', resumo: '', proximo_passo: '' }
 const TEMPLATES = [
   { id: 'cobranca', label: '💰 Cobrança', desc: 'Honorário vencido ou a vencer' },

@@ -21,7 +21,7 @@ const OBR_CATALOG = [
 ]
 
 const REGIMES = ['MEI','Simples Nacional','Lucro Presumido','Lucro Real','Entidade / Assoc.','Partido Político']
-const COLABS = ['Carlos','Ana','Pedro','Maria']
+const COLABS = ['Ronaldo','Bruno','Karine','Cintia','Ronaldo Contador']
 
 const emptyForm = {
   nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
