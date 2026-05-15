@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, ChevronRight, Building2
+  Menu, X, Building2
 } from 'lucide-react'
 
 const navItems = [
-  {const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
   { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
   { to: '/honorarios',   icon: DollarSign,       label: 'Honorários',     somenteGestor: true  },
@@ -16,15 +15,6 @@ const navItems = [
   { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
   { to: '/agenda',       icon: Calendar,         label: 'Agenda',         somenteGestor: false },
-]
-
-const x_placeholder = , label: 'Dashboard' },
-  { to: '/clientes',     icon: Users,            label: 'Clientes' },
-  { to: '/honorarios',   icon: DollarSign,       label: 'Honorários' },
-  { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar' },
-  { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas' },
-  { to: '/atendimento',  icon: Headphones,       label: 'Atendimento' },
-  { to: '/agenda',       icon: Calendar,         label: 'Agenda' },
 ]
 
 export default function Layout() {
@@ -37,31 +27,23 @@ export default function Layout() {
     navigate('/login')
   }
 
+  const itensFiltrados = navItems.filter(item => !item.somenteGestor || isGestor)
+
   const Sidebar = ({ mobile = false }) => (
     <div className={`flex flex-col h-full ${mobile ? '' : 'w-64'}`}>
-      {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
         <img src="/logo.png" alt="CARSANT" className="h-10 w-auto rounded-lg" />
       </div>
-
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `sidebar-link ${isActive ? 'active' : ''}`
-            }
-            onClick={() => mobile && setSidebarOpen(false)}
-          >
+        {itensFiltrados.map(({ to, icon: Icon, label }) => (
+          <NavLink key={to} to={to}
+            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            onClick={() => mobile && setSidebarOpen(false)}>
             <Icon className="w-4 h-4 flex-shrink-0" />
             <span>{label}</span>
           </NavLink>
         ))}
       </nav>
-
-      {/* Perfil */}
       <div className="px-4 py-4 border-t border-gray-100">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-semibold text-sm">
@@ -81,40 +63,26 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Sidebar desktop */}
       <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 flex-shrink-0">
         <Sidebar />
       </aside>
-
-      {/* Sidebar mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl z-10">
             <div className="flex justify-end p-4">
-              <button onClick={() => setSidebarOpen(false)} className="btn-ghost p-2">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setSidebarOpen(false)} className="btn-ghost p-2"><X className="w-5 h-5" /></button>
             </div>
             <Sidebar mobile />
           </aside>
         </div>
       )}
-
-      {/* Conteúdo principal */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header mobile */}
         <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200">
-          <button onClick={() => setSidebarOpen(true)} className="btn-ghost p-2">
-            <Menu className="w-5 h-5" />
-          </button>
-          <span className="font-semibold text-gray-900">CARSANT</span>
+          <button onClick={() => setSidebarOpen(true)} className="btn-ghost p-2"><Menu className="w-5 h-5" /></button>
+          <img src="/logo.png" alt="CARSANT" className="h-8 w-auto" />
         </header>
-
-        {/* Área de conteúdo */}
-        <main className="flex-1 overflow-y-auto">
-          <Outlet />
-        </main>
+        <main className="flex-1 overflow-y-auto"><Outlet /></main>
       </div>
     </div>
   )
