@@ -30,14 +30,8 @@ export default function Layout() {
   const Sidebar = ({ mobile = false }) => (
     <div className={`flex flex-col h-full ${mobile ? '' : 'w-64'}`}>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-        <div className="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Building2 className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <div className="text-sm font-bold text-gray-900 leading-tight">CARSANT</div>
-          <div className="text-xs text-gray-500">Contabilidade</div>
-        </div>
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
+        <img src="/logo.png" alt="CARSANT" className="h-10 w-auto rounded-lg" />
       </div>
 
       {/* Nav */}

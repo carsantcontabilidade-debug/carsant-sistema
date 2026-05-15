@@ -27,11 +27,10 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Building2 className="w-9 h-9 text-white" />
+          <div className="mx-auto mb-4 w-48">
+            <img src="/logo.png" alt="CARSANT Contabilidade" className="w-full rounded-2xl shadow-2xl" />
           </div>
-          <h1 className="text-2xl font-bold text-white">CARSANT</h1>
-          <p className="text-blue-200 text-sm mt-1">Sistema de Gestão Contábil</p>
+          <p className="text-blue-200 text-sm mt-2">Sistema de Gestão Contábil</p>
         </div>
 
         {/* Card */}
