@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, Building2, FileText
+  Menu, X, Building2
 } from 'lucide-react'
 
 const navItems = [
@@ -12,7 +12,6 @@ const navItems = [
   { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
   { to: '/honorarios',   icon: DollarSign,       label: 'Honorários',     somenteGestor: true  },
   { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar', somenteGestor: true  },
-  { to: '/relatorio',    icon: FileText,         label: 'Relatório',      somenteGestor: true  },
   { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
   { to: '/agenda',       icon: Calendar,         label: 'Agenda',         somenteGestor: false },

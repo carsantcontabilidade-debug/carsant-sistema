@@ -9,7 +9,6 @@ import ContasPagar from './pages/ContasPagar'
 import Tarefas from './pages/Tarefas'
 import Atendimento from './pages/Atendimento'
 import Agenda from './pages/Agenda'
-import RelatorioInadimplencia from './pages/RelatorioInadimplencia'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -23,6 +22,7 @@ function PrivateRoute({ children }) {
   )
   return user ? children : <Navigate to="/login" />
 }
+
 function GestorRoute({ children }) {
   const { user, loading, isGestor } = useAuth()
   if (loading) return null
@@ -30,6 +30,7 @@ function GestorRoute({ children }) {
   if (!isGestor) return <Navigate to="/dashboard" />
   return children
 }
+
 export default function App() {
   return (
     <Routes>
@@ -40,7 +41,6 @@ export default function App() {
         <Route path="clientes" element={<Clientes />} />
         <Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
         <Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
-        <Route path="relatorio" element={<GestorRoute><RelatorioInadimplencia /></GestorRoute>} />
         <Route path="tarefas" element={<Tarefas />} />
         <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
