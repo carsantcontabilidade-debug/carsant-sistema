@@ -1,6 +1,6 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
@@ -10,7 +10,7 @@ import {
 const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
   { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
-  { to: '/honorarios',   icon: DollarSign,       label: 'Honorários',     somenteGestor: true  },
+  { to: '/honorarios',   icon: DollarSign,       label: 'HonorÃ¡rios',     somenteGestor: true  },
   { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar', somenteGestor: true  },
   { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
@@ -50,7 +50,7 @@ export default function Layout() {
             {profile?.nome?.charAt(0) || '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 truncate">{profile?.nome || 'Usuário'}</div>
+            <div className="text-sm font-medium text-gray-900 truncate">{profile?.nome || 'UsuÃ¡rio'}</div>
             <div className="text-xs text-gray-500">{isGestor ? 'Gestor' : 'Colaborador'}</div>
           </div>
         </div>
