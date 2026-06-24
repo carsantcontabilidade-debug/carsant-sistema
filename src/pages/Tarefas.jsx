@@ -19,7 +19,7 @@ const OBR_CATALOG = [
 
 const TIPOS = ['declaracao','abertura','anual','atendimento','administrativo','outro']
 const TIPO_LABEL = { declaracao: 'Declaração', abertura: 'Abertura', anual: 'Anual', atendimento: 'Atendimento', administrativo: 'Administrativo', outro: 'Outro' }
-const COLABS = ['Ronaldo','Bruno','Karine','Cintia','Ronaldo Contador']
+const COLABS = ['Carlos','Ana','Pedro','Maria']
 const MES_NOMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const emptyForm = { descricao: '', cliente_nome: '', tipo: 'declaracao', responsavel: 'Carlos', prazo: '', prioridade: 'media', status: 'pendente', obs: '' }
 

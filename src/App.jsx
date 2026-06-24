@@ -23,6 +23,7 @@ function PrivateRoute({ children }) {
   )
   return user ? children : <Navigate to="/login" />
 }
+
 function GestorRoute({ children }) {
   const { user, loading, isGestor } = useAuth()
   if (loading) return null
@@ -30,6 +31,7 @@ function GestorRoute({ children }) {
   if (!isGestor) return <Navigate to="/dashboard" />
   return children
 }
+
 export default function App() {
   return (
     <Routes>
