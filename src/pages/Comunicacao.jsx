@@ -58,7 +58,7 @@ export default function Comunicacao() {
     setLoadingClientes(true);
     const { data, error } = await supabase
       .from("clientes")
-      .select('id, nome, telefone, "e-mail", email2, regime, valor_honorário')
+      .select('*')
       .order("nome");
     if (error) console.error("Erro ao carregar clientes:", error);
     setClientes(data || []);
@@ -69,7 +69,7 @@ export default function Comunicacao() {
     setLoadingComms(true);
     let query = supabase
       .from("comunicacoes")
-      .select(`*, clientes(nome, telefone, "e-mail"), profiles(nome)`)
+      .select("*, clientes(*), profiles(nome)")
       .order("created_at", { ascending: false })
       .limit(100);
 
