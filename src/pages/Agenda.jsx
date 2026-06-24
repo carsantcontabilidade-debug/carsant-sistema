@@ -11,8 +11,8 @@ import {
 const TIPOS = ['reuniao','prazo','visita','outro']
 const TIPO_LABEL = { reuniao: 'Reunião', prazo: 'Prazo fiscal', visita: 'Visita', outro: 'Outro' }
 const TIPO_COLOR = { reuniao: 'bg-blue-100 text-blue-700', prazo: 'bg-red-100 text-red-700', visita: 'bg-yellow-100 text-yellow-700', outro: 'bg-gray-100 text-gray-600' }
-const COLABS = ['Carlos','Ana','Pedro','Maria']
-const emptyForm = { titulo: '', data: format(new Date(), 'yyyy-MM-dd'), hora: '', tipo: 'reuniao', cliente_nome: '', responsavel: 'Carlos', obs: '' }
+const COLABS = ["Ronaldo", "Karine", "Bruno", "Cíntia"]
+const emptyForm = { titulo: '', data: format(new Date(), 'yyyy-MM-dd'), hora: '', tipo: 'reuniao', cliente_nome: '', responsavel: 'Ronaldo', obs: '' }
 
 export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -109,7 +109,7 @@ export default function Agenda() {
             tipo: 'outro',
             obs: ge.description || '',
             google_event_id: ge.id,
-            responsavel: 'Carlos'
+            responsavel: 'Ronaldo'
           })
           importados++
         }
