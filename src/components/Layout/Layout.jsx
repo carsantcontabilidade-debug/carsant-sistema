@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -15,8 +15,8 @@ const navItems = [
   { to: '/relatorio',    icon: FileText,         label: 'Relatorio',      somenteGestor: true  },
   { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
-  { to: '/agenda',       icon: Calendar,         label: 'Agenda',         somenteGestor: false },
-]
+  { to: '/agenda',       icon: Calendar,         label: 'Agenda', { to: '/agenda',      icon: Calendar,    label: 'Agenda',      som...        somenteGestor: false },
+{ to: '/comunicacao', icon: Headphones,  label: 'Comunicação', someoneGestor: false },]
 
 export default function Layout() {
   const { profile, signOut, isGestor } = useAuth()
