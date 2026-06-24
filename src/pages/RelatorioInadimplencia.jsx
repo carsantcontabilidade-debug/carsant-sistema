@@ -46,7 +46,7 @@ export default function RelatorioInadimplencia() {
     try {
       const { data: clientes, error: errCli } = await supabase
         .from("clientes")
-        .select("id, nome, regime_tributario, honorario_mensal, dia_vencimento, tipo")
+        .select("id, nome, regime, valor_honorario, dia_vencimento, tipo")
         .order("nome");
 
       if (errCli) throw errCli;
@@ -67,8 +67,8 @@ export default function RelatorioInadimplencia() {
         const statusKey = getStatusKey(pag?.pago, c.dia_vencimento, mes, ano);
         return {
           nome: c.nome,
-          regime: c.regime_tributario || "—",
-          honorario: c.honorario_mensal || 0,
+          regime: c.regime || "—",
+          honorario: c.valor_honorario || 0,
           status: statusKey,
           data_pagamento: pag?.data_pagamento || null,
           vencimento: c.dia_vencimento
