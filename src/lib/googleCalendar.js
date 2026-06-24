@@ -1,11 +1,11 @@
-// src/lib/googleCalendar.js
+﻿// src/lib/googleCalendar.js
 import { supabase } from './supabase'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
-const REDIRECT_URI = `${window.location.origin}/auth/google/callback`
+const REDIRECT_URI = `${window.location.origin}/agenda`
 const SCOPES = 'https://www.googleapis.com/auth/calendar'
 
-// Gera URL de autorização OAuth
+// Gera URL de autorizaÃ§Ã£o OAuth
 export function getGoogleAuthUrl() {
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -27,7 +27,7 @@ export async function trocarCodePorToken(code) {
   return data
 }
 
-// Busca token salvo do usuário
+// Busca token salvo do usuÃ¡rio
 export async function buscarToken() {
   const { data } = await supabase
     .from('google_tokens')
@@ -60,17 +60,17 @@ export async function removerToken() {
   if (error) throw error
 }
 
-// Verifica se token está válido
+// Verifica se token estÃ¡ vÃ¡lido
 function tokenValido(token) {
   if (!token?.access_token) return false
   if (!token.expires_at) return true
   return new Date(token.expires_at) > new Date(Date.now() + 60000)
 }
 
-// Renova token se necessário
+// Renova token se necessÃ¡rio
 async function getAccessToken() {
   const token = await buscarToken()
-  if (!token) throw new Error('Não conectado ao Google Calendar')
+  if (!token) throw new Error('NÃ£o conectado ao Google Calendar')
   if (tokenValido(token)) return token.access_token
 
   // Renovar via Edge Function
@@ -94,7 +94,7 @@ function formatarParaGoogle(evento) {
     summary: evento.titulo,
     description: [
       evento.cliente_nome ? `Cliente: ${evento.cliente_nome}` : '',
-      evento.responsavel ? `Responsável: ${evento.responsavel}` : '',
+      evento.responsavel ? `ResponsÃ¡vel: ${evento.responsavel}` : '',
       evento.obs || ''
     ].filter(Boolean).join('\n'),
   }
@@ -103,7 +103,7 @@ function formatarParaGoogle(evento) {
     result.start = { date: evento.data }
     result.end = { date: evento.data }
   } else {
-    // Evento de 1 hora por padrão
+    // Evento de 1 hora por padrÃ£o
     const [h, m] = evento.hora.split(':').map(Number)
     const endHour = String(h + 1).padStart(2, '0')
     result.start = { dateTime: `${evento.data}T${evento.hora}:00`, timeZone: 'America/Bahia' }
@@ -204,3 +204,4 @@ export async function buscarEventosGoogle(dataInicio, dataFim) {
     return []
   }
 }
+
