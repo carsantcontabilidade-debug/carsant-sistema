@@ -9,8 +9,8 @@ import ContasPagar from './pages/ContasPagar'
 import Tarefas from './pages/Tarefas'
 import Atendimento from './pages/Atendimento'
 import Agenda from './pages/Agenda'
-import RelatorioInadimplencia from './pages/RelatorioInadimplencia'import RelatorioInadimplencia from './pages/RelatorioInadimplencia'
-import Comunicacao from './pages/Comunicacao'   {/* ← ADICIONAR esta linha */}
+import RelatorioInadimplencia from './pages/RelatorioInadimplencia'
+import Comunicacao from './pages/Comunicacao'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -44,11 +44,9 @@ export default function App() {
         <Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
         <Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
         <Route path="relatorio" element={<GestorRoute><RelatorioInadimplencia /></GestorRoute>} />
-        <Route path="tarefas" element={<Tarefas />} />
-        <Route path="atendimento" element={<Atendimento />} /><Route path="agenda" element={<Agenda />} />
-        <Route path="comunicacao" element={<Comunicacao />} />   {/* ← ADICIONAR esta linha */}
-      </Route>
+        <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
+        <Route path="comunicacao" element={<Comunicacao />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
