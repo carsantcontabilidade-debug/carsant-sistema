@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
-const INTER_BASE_URL = "https://cdpj.bancointer.com.br";
+const INTER_BASE_URL = "https://cdpj.partners.bancointer.com.br";
 const CLIENT_ID = "d99613c1-3f83-4c10-97af-8ce23732259b";
 const CLIENT_SECRET = "35904525-2590-4f3a-a417-6a11705dfede";
 
@@ -23,15 +23,30 @@ async function getInterToken(): Promise<string> {
     scope: "cobranca.read cobranca.write",
   });
 
-  const resp = await fetch(`${INTER_BASE_URL}/oauth/v2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    client: getHttpClient(),
-  } as any);
+  console.log("Cert PEM presente:", !!Deno.env.get("INTER_CERT_PEM"));
+  console.log("Key PEM presente:", !!Deno.env.get("INTER_KEY_PEM"));
+  console.log("Cert length:", (Deno.env.get("INTER_CERT_PEM") || "").length);
+  console.log("Key length:", (Deno.env.get("INTER_KEY_PEM") || "").length);
 
-  if (!resp.ok) throw new Error(`Erro token: ${await resp.text()}`);
-  const data = await resp.json();
+  let resp;
+  try {
+    resp = await fetch(`${INTER_BASE_URL}/oauth/v2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      client: getHttpClient(),
+    } as any);
+  } catch (fetchError) {
+    console.log("Fetch lançou exceção:", fetchError.message);
+    throw new Error(`Falha na conexão TLS: ${fetchError.message}`);
+  }
+
+  console.log("Status da resposta:", resp.status);
+  const text = await resp.text();
+  console.log("Corpo da resposta:", text);
+
+  if (!resp.ok) throw new Error(`Erro token (${resp.status}): ${text}`);
+  const data = JSON.parse(text);
   return data.access_token;
 }
 
