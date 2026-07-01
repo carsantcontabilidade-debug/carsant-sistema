@@ -11,7 +11,7 @@ import Atendimento from './pages/Atendimento'
 import Agenda from './pages/Agenda'
 import RelatorioInadimplencia from './pages/RelatorioInadimplencia'
 import Comunicacao from './pages/Comunicacao'
-
+import Cobrancas from './pages/Cobrancas'
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
@@ -47,7 +47,7 @@ export default function App() {
         <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="comunicacao" element={<Comunicacao />} />
-      </Route>
+      <Route path="cobrancas" element={<Cobrancas />} />
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
   )
