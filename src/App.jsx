@@ -47,7 +47,8 @@ export default function App() {
         <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="comunicacao" element={<Comunicacao />} />
-      <Route path="cobrancas" element={<Cobrancas />} />
+        <Route path="cobrancas" element={<GestorRoute><Cobrancas /></GestorRoute>} />
+      </Route>
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
   )
