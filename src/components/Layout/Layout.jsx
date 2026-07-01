@@ -17,7 +17,7 @@ const navItems = [
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
   { to: '/agenda',      icon: Calendar,   label: 'Agenda',      somenteGestor: false },
   { to: '/comunicacao', icon: Headphones, label: 'Comunicação', somenteGestor: false },
-  { to: '/cobrancas', icon: CreditCard, label: 'Cobranças', somenteGestor: false },
+  { to: '/cobrancas',    icon: CreditCard,       label: 'Cobranças',     somenteGestor: true  },
 ]
 export default function Layout() {
   const { profile, signOut, isGestor } = useAuth()
