@@ -53,7 +53,7 @@ async function obterToken(agent) {
     client_id: process.env.INTER_CLIENT_ID,
     client_secret: process.env.INTER_CLIENT_SECRET,
     grant_type: 'client_credentials',
-    scope: 'cobranca-cobv3.write cobranca-cobv3.read',
+    scope: 'boleto-cobranca.write boleto-cobranca.read',
   });
 
   return new Promise((resolve, reject) => {
