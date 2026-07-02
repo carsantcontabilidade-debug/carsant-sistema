@@ -162,7 +162,7 @@ export default function Cobrancas() {
           cpfCnpj: clienteForm?.cnpj?.replace(/\D/g, "") || "00000000000000",
           tipoPessoa: "JURIDICA",
           nome: clienteForm?.nome,
-          email: clienteForm?.["e-mail"] || clienteForm?.email2 || "",
+          email: clienteForm?.["email"] || clienteForm?.email2 || "",
           endereco: "Feira de Santana",
           cidade: "Feira de Santana",
           uf: "BA",
@@ -275,7 +275,7 @@ export default function Cobrancas() {
   }
 
   function abrirEmail(cob) {
-    const email = cob.clientes?.["e-mail"] || "";
+    const email = cob.clientes?.["email"] || "";
     if (!email) return;
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
     const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
@@ -344,7 +344,7 @@ export default function Cobrancas() {
               {clienteSelecionado && (
                 <p className="text-sm text-gray-400 mt-0.5">
                   {clienteSelecionado.telefone && `📱 ${clienteSelecionado.telefone}`}
-                  {clienteSelecionado["e-mail"] && ` · ✉️ ${clienteSelecionado["e-mail"]}`}
+                  {clienteSelecionado["email"] && ` · ✉️ ${clienteSelecionado["email"]}`}
                 </p>
               )}
             </div>
@@ -484,7 +484,7 @@ export default function Cobrancas() {
                       📱 Enviar WhatsApp
                     </button>
                   )}
-                  {cobrancaAtual.clientes?.["e-mail"] && cobrancaAtual.status === "gerada" && (
+                  {cobrancaAtual.clientes?.["email"] && cobrancaAtual.status === "gerada" && (
                     <button onClick={() => abrirEmail(cobrancaAtual)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700">
                       ✉️ Enviar E-mail
                     </button>
@@ -594,4 +594,5 @@ export default function Cobrancas() {
     </div>
   );
 }
+
 
