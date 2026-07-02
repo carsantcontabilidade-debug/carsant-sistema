@@ -97,7 +97,7 @@ export default function Cobrancas() {
     setForm({
       cliente_id: clientePre?.id || "",
       descricao: clientePre ? `Honorários Contábeis — ${mesRef.replace("-", "/")}` : "",
-      valor: clientePre?.["valor_honorário"] ? String(clientePre["valor_honorário"]) : "",
+      valor: clientePre?.["valor_honorario"] ? String(clientePre["valor_honorario"]) : "",
       vencimento: vencimento.toISOString().split("T")[0],
       tipo: "honorario",
       mes_referencia: mesRef,
@@ -123,7 +123,7 @@ export default function Cobrancas() {
         ...f,
         cliente_id: clienteId,
         descricao: `Honorários Contábeis — ${mesRef.replace("-", "/")}`,
-        valor: c["valor_honorário"] ? String(c["valor_honorário"]) : "",
+        valor: c["valor_honorario"] ? String(c["valor_honorario"]) : "",
         vencimento: vencimento.toISOString().split("T")[0],
         mes_referencia: mesRef,
       }));
@@ -539,7 +539,7 @@ export default function Cobrancas() {
                     {clienteForm && (
                       <div className="mt-1 text-xs text-gray-400 flex gap-3">
                         {clienteForm.cnpj && <span>CNPJ: {clienteForm.cnpj}</span>}
-                        {clienteForm["valor_honorário"] && <span>Honorário: {formatarValor(clienteForm["valor_honorário"])}</span>}
+                        {clienteForm["valor_honorario"] && <span>Honorário: {formatarValor(clienteForm["valor_honorario"])}</span>}
                       </div>
                     )}
                   </div>
@@ -594,5 +594,8 @@ export default function Cobrancas() {
     </div>
   );
 }
+
+
+
 
 
