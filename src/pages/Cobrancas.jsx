@@ -78,7 +78,7 @@ export default function Cobrancas() {
     setLoadingCobrancas(true);
     let query = supabase
       .from("cobrancas")
-      .select("*, clientes(nome, telefone, \"e-mail\"), profiles(nome)")
+      .select("*, clientes(nome, telefone, email), profiles(nome)")
       .order("created_at", { ascending: false })
       .limit(200);
     if (clienteSelecionado) query = query.eq("cliente_id", clienteSelecionado.id);
@@ -594,3 +594,4 @@ export default function Cobrancas() {
     </div>
   );
 }
+
