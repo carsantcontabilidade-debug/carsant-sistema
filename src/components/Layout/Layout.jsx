@@ -1,28 +1,37 @@
 ﻿import { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, FileText
+  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt
 } from 'lucide-react'
 
 const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
   { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
-  { to: '/honorarios',   icon: DollarSign,       label: 'Honorarios',     somenteGestor: true  },
-  { to: '/contas-pagar', icon: CreditCard,       label: 'Contas a Pagar', somenteGestor: true  },
+  {
+    group: 'financeiro',
+    icon: Wallet,
+    label: 'Financeiro',
+    somenteGestor: true,
+    children: [
+      { to: '/honorarios',   icon: DollarSign, label: 'Honorários' },
+      { to: '/cobrancas',    icon: Receipt,    label: 'Cobranças' },
+      { to: '/contas-pagar', icon: CreditCard, label: 'Contas a Pagar' },
+    ],
+  },
   { to: '/relatorio',    icon: FileText,         label: 'Relatorio',      somenteGestor: true  },
   { to: '/tarefas',      icon: CheckSquare,      label: 'Tarefas',        somenteGestor: false },
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
   { to: '/agenda',      icon: Calendar,   label: 'Agenda',      somenteGestor: false },
   { to: '/comunicacao', icon: Headphones, label: 'Comunicação', somenteGestor: false },
-  { to: '/cobrancas',    icon: CreditCard,       label: 'Cobranças',     somenteGestor: true  },
 ]
 export default function Layout() {
   const { profile, signOut, isGestor } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
 
   async function handleSignOut() {
     await signOut()
@@ -31,23 +40,67 @@ export default function Layout() {
 
   const itensFiltrados = navItems.filter(item => !item.somenteGestor || isGestor)
 
+  const grupoFinanceiroAtivo = navItems
+    .find(item => item.group === 'financeiro')
+    ?.children.some(child => location.pathname.startsWith(child.to))
+
+  const [financeiroAberto, setFinanceiroAberto] = useState(grupoFinanceiroAtivo)
+
   const Sidebar = ({ mobile = false }) => (
     <div className={`flex flex-col h-full ${mobile ? '' : 'w-64'}`}>
       <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
         <img src="/logo.png" alt="CARSANT" className="h-10 w-auto rounded-lg" />
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {itensFiltrados.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            onClick={() => mobile && setSidebarOpen(false)}
-          >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        {itensFiltrados.map((item) => {
+          if (item.group) {
+            const Icon = item.icon
+            const algumFilhoAtivo = item.children.some(child => location.pathname.startsWith(child.to))
+            const aberto = financeiroAberto || algumFilhoAtivo
+            return (
+              <div key={item.group}>
+                <button
+                  type="button"
+                  onClick={() => setFinanceiroAberto(v => !v)}
+                  className={`sidebar-link w-full justify-between ${algumFilhoAtivo ? 'active' : ''}`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </span>
+                  {aberto ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                {aberto && (
+                  <div className="ml-4 pl-3 border-l border-gray-200 space-y-1 mt-1">
+                    {item.children.map(({ to, icon: ChildIcon, label }) => (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                        onClick={() => mobile && setSidebarOpen(false)}
+                      >
+                        <ChildIcon className="w-4 h-4 flex-shrink-0" />
+                        <span>{label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          }
+          const { to, icon: Icon, label } = item
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              onClick={() => mobile && setSidebarOpen(false)}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span>{label}</span>
+            </NavLink>
+          )
+        })}
       </nav>
       <div className="px-4 py-4 border-t border-gray-100">
         <div className="flex items-center gap-3 mb-3">
