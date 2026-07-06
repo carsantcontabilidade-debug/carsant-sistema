@@ -1,8 +1,10 @@
 import nodemailer from 'nodemailer';
 
-// Servidor SMTP da UOL (hospedagem de e-mail profissional / carsantcontabilidade.com.br).
-// Host e porta padrão da UOL: smtps.uol.com.br, porta 587 (STARTTLS).
-const SMTP_HOST = process.env.SMTP_HOST || 'smtps.uol.com.br';
+// Servidor SMTP do UOL HOST (E-mail Profissional / domínio próprio).
+// IMPORTANTE: para contas @uol.com.br pessoais o servidor é smtps.uol.com.br,
+// mas para domínio próprio (E-mail Profissional / UOL Host, como
+// carsantcontabilidade.com.br) o servidor correto é smtps.uhserver.com.
+const SMTP_HOST = process.env.SMTP_HOST || 'smtps.uhserver.com';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 
 function buildTransport() {

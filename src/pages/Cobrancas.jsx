@@ -291,7 +291,7 @@ export default function Cobrancas() {
       });
       const data = await resp.json();
       if (!resp.ok) {
-        throw new Error(data.error || "Falha ao enviar e-mail");
+        throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
       }
       setSucesso(`E-mail enviado para ${email}`);
       setTimeout(() => setSucesso(""), 4000);
