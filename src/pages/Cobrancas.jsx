@@ -274,12 +274,31 @@ export default function Cobrancas() {
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
-  function abrirEmail(cob) {
+  async function abrirEmail(cob) {
     const email = cob.clientes?.["email"] || "";
     if (!email) return;
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
     const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
-    window.location.href = `mailto:${email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+
+    setErro("");
+    setSucesso("");
+    setProcessando(true);
+    try {
+      const resp = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: email, subject: assunto, text: corpo }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || "Falha ao enviar e-mail");
+      }
+      setSucesso(`E-mail enviado para ${email}`);
+      setTimeout(() => setSucesso(""), 4000);
+    } catch (e) {
+      setErro(`Erro ao enviar e-mail: ${e.message}`);
+    }
+    setProcessando(false);
   }
 
   // Totais
