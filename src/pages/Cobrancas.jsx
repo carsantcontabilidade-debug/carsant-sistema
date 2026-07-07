@@ -278,6 +278,34 @@ export default function Cobrancas() {
     return resultado.pdfBase64 || null;
   }
 
+  function base64ParaBytes(base64) {
+    const binario = atob(base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    return bytes;
+  }
+
+  async function garantirLinkBoleto(cob) {
+    // Se já existe um link salvo, reaproveita (evita novo upload a cada envio).
+    if (cob.link_boleto) return cob.link_boleto;
+    const pdfBase64 = await buscarPdfBase64(cob);
+    if (!pdfBase64) return null;
+
+    const caminho = `${cob.codigo_solicitacao}.pdf`;
+    const bytes = base64ParaBytes(pdfBase64);
+    const { error: erroUpload } = await supabase.storage
+      .from("boletos")
+      .upload(caminho, bytes, { contentType: "application/pdf", upsert: true });
+    if (erroUpload) throw new Error(erroUpload.message);
+
+    const { data } = supabase.storage.from("boletos").getPublicUrl(caminho);
+    const url = data?.publicUrl;
+    if (url) {
+      await supabase.from("cobrancas").update({ link_boleto: url }).eq("id", cob.id);
+    }
+    return url || null;
+  }
+
   async function verBoleto(cob) {
     setErro("");
     setProcessando(true);
@@ -291,10 +319,21 @@ export default function Cobrancas() {
     setProcessando(false);
   }
 
-  function abrirWhatsApp(cob) {
+  async function abrirWhatsApp(cob) {
     const tel = cob.clientes?.telefone?.replace(/\D/g, "");
     if (!tel) return;
-    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto: ${cob.link_boleto}` : ""}`;
+
+    setErro("");
+    setProcessando(true);
+    let linkBoleto = cob.link_boleto;
+    try {
+      linkBoleto = await garantirLinkBoleto(cob);
+    } catch (e) {
+      console.warn("Não foi possível gerar o link do boleto para o WhatsApp:", e.message);
+    }
+    setProcessando(false);
+
+    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}` : ""}`;
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
