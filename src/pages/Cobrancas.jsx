@@ -64,6 +64,16 @@ export default function Cobrancas() {
   });
   const [clienteForm, setClienteForm] = useState(null);
 
+  // Lote
+  const [loteSelecionados, setLoteSelecionados] = useState([]);
+  const [loteBusca, setLoteBusca] = useState("");
+  const [loteVencimento, setLoteVencimento] = useState("");
+  const [loteMesReferencia, setLoteMesReferencia] = useState("");
+  const [loteProcessando, setLoteProcessando] = useState(false);
+  const [loteProgresso, setLoteProgresso] = useState({ atual: 0, total: 0 });
+  const [loteResultados, setLoteResultados] = useState([]);
+  const [loteEnviandoEmails, setLoteEnviandoEmails] = useState(false);
+
   useEffect(() => { carregarClientes(); }, []);
   useEffect(() => { carregarCobrancas(); }, [clienteSelecionado, filtroStatus]);
 
@@ -132,6 +142,143 @@ export default function Cobrancas() {
     }
   }
 
+  async function criarCobrancaParaCliente(cliente, { descricao, valor, vencimento, tipo, mesReferencia }) {
+    // 1. Salvar no banco com status pendente
+    const { data: cobSalva, error: errSalvar } = await supabase.from("cobrancas").insert({
+      cliente_id: cliente.id,
+      descricao,
+      valor: parseFloat(String(valor).replace(",", ".")),
+      vencimento,
+      tipo,
+      mes_referencia: tipo === "honorario" ? mesReferencia : null,
+      status: "pendente",
+      responsavel_id: profile?.id,
+    }).select().single();
+
+    if (errSalvar) throw new Error(errSalvar.message);
+
+    // 2. Chamar Edge Function para gerar no Banco Inter
+    const payloadInter = {
+      pagador: {
+        cpfCnpj: cliente?.cnpj?.replace(/\D/g, "") || "00000000000000",
+        tipoPessoa: "JURIDICA",
+        nome: cliente?.nome,
+        email: cliente?.["email"] || cliente?.email2 || "",
+        endereco: "Feira de Santana",
+        cidade: "Feira de Santana",
+        uf: "BA",
+        cep: "44000000",
+        numero: "S/N",
+        bairro: "Centro",
+      },
+      mensagem: { linha1: descricao, linha2: "CARSANT Contabilidade", linha3: "Feira de Santana, BA" },
+      dataVencimento: vencimento,
+      valorNominal: parseFloat(String(valor).replace(",", ".")),
+      numDiasAgenda: 60,
+      seuNumero: cobSalva.id.substring(0, 8).toUpperCase(),
+    };
+
+    const resultado = await chamarEdgeFunction("criar_cobranca", payloadInter);
+
+    // 3. Atualizar banco com dados do Inter
+    await supabase.from("cobrancas").update({
+      status: "gerada",
+      codigo_solicitacao: resultado.codigoSolicitacao,
+      nosso_numero: resultado.nossoNumero,
+      codigo_barras: resultado.codigoBarras,
+      linha_digitavel: resultado.linhaDigitavel,
+      pix_copia_cola: resultado.pixCopiaECola,
+    }).eq("id", cobSalva.id);
+
+    return {
+      ...cobSalva,
+      ...resultado,
+      status: "gerada",
+      clientes: cliente,
+    };
+  }
+
+  function abrirLote() {
+    const hoje = new Date();
+    const vencimentoPadrao = new Date(hoje.getFullYear(), hoje.getMonth(), 10);
+    if (vencimentoPadrao < hoje) vencimentoPadrao.setMonth(vencimentoPadrao.getMonth() + 1);
+    const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+
+    setLoteSelecionados([]);
+    setLoteBusca("");
+    setLoteVencimento(vencimentoPadrao.toISOString().split("T")[0]);
+    setLoteMesReferencia(mesRef);
+    setLoteResultados([]);
+    setLoteProgresso({ atual: 0, total: 0 });
+    setErro("");
+    setSucesso("");
+    setModalTipo("lote");
+    setModalAberto(true);
+  }
+
+  function alternarClienteLote(clienteId) {
+    setLoteSelecionados(sel =>
+      sel.includes(clienteId) ? sel.filter(id => id !== clienteId) : [...sel, clienteId]
+    );
+  }
+
+  async function gerarCobrancasEmLote() {
+    const clientesParaGerar = clientes.filter(c => loteSelecionados.includes(c.id));
+    if (clientesParaGerar.length === 0) {
+      setErro("Selecione ao menos um cliente.");
+      return;
+    }
+    setLoteProcessando(true);
+    setErro("");
+    setLoteResultados([]);
+    setLoteProgresso({ atual: 0, total: clientesParaGerar.length });
+
+    const resultados = [];
+    for (let i = 0; i < clientesParaGerar.length; i++) {
+      const cliente = clientesParaGerar[i];
+      setLoteProgresso({ atual: i + 1, total: clientesParaGerar.length });
+      if (!cliente["valor_honorario"]) {
+        resultados.push({ cliente, status: "erro", mensagem: "Sem valor de honorário cadastrado." });
+        continue;
+      }
+      try {
+        const mesRefFormatado = loteMesReferencia.replace("-", "/");
+        const cobrancaCriada = await criarCobrancaParaCliente(cliente, {
+          descricao: `Honorários Contábeis — ${mesRefFormatado}`,
+          valor: cliente["valor_honorario"],
+          vencimento: loteVencimento,
+          tipo: "honorario",
+          mesReferencia: loteMesReferencia,
+        });
+        resultados.push({ cliente, status: "ok", cobranca: cobrancaCriada });
+      } catch (e) {
+        resultados.push({ cliente, status: "erro", mensagem: e.message });
+      }
+    }
+
+    setLoteResultados(resultados);
+    setLoteProcessando(false);
+    carregarCobrancas();
+  }
+
+  async function enviarTodosEmailsLote() {
+    const alvos = loteResultados.filter(r => r.status === "ok" && r.cobranca.clientes?.["email"]);
+    if (alvos.length === 0) return;
+    setLoteEnviandoEmails(true);
+    const atualizados = [...loteResultados];
+    for (const alvo of alvos) {
+      const idx = atualizados.findIndex(r => r.cobranca?.id === alvo.cobranca.id);
+      try {
+        await enviarEmailCobrancaSilencioso(alvo.cobranca);
+        atualizados[idx] = { ...atualizados[idx], emailEnviado: true };
+      } catch (e) {
+        atualizados[idx] = { ...atualizados[idx], emailEnviado: false, emailErro: e.message };
+      }
+      setLoteResultados([...atualizados]);
+    }
+    setLoteEnviandoEmails(false);
+  }
+
   async function gerarCobranca() {
     if (!form.cliente_id || !form.valor || !form.vencimento || !form.descricao) {
       setErro("Preencha todos os campos obrigatórios.");
@@ -142,52 +289,13 @@ export default function Cobrancas() {
     setSucesso("");
 
     try {
-      // 1. Salvar no banco com status pendente
-      const { data: cobSalva, error: errSalvar } = await supabase.from("cobrancas").insert({
-        cliente_id: form.cliente_id,
+      const cobrancaCriada = await criarCobrancaParaCliente(clienteForm, {
         descricao: form.descricao,
-        valor: parseFloat(form.valor.replace(",", ".")),
+        valor: form.valor,
         vencimento: form.vencimento,
         tipo: form.tipo,
-        mes_referencia: form.tipo === "honorario" ? form.mes_referencia : null,
-        status: "pendente",
-        responsavel_id: profile?.id,
-      }).select().single();
-
-      if (errSalvar) throw new Error(errSalvar.message);
-
-      // 2. Chamar Edge Function para gerar no Banco Inter
-      const payloadInter = {
-        pagador: {
-          cpfCnpj: clienteForm?.cnpj?.replace(/\D/g, "") || "00000000000000",
-          tipoPessoa: "JURIDICA",
-          nome: clienteForm?.nome,
-          email: clienteForm?.["email"] || clienteForm?.email2 || "",
-          endereco: "Feira de Santana",
-          cidade: "Feira de Santana",
-          uf: "BA",
-          cep: "44000000",
-          numero: "S/N",
-          bairro: "Centro",
-        },
-        mensagem: { linha1: form.descricao, linha2: "CARSANT Contabilidade", linha3: "Feira de Santana, BA" },
-        dataVencimento: form.vencimento,
-        valorNominal: parseFloat(form.valor.replace(",", ".")),
-        numDiasAgenda: 60,
-        seuNumero: cobSalva.id.substring(0, 8).toUpperCase(),
-      };
-
-      const resultado = await chamarEdgeFunction("criar_cobranca", payloadInter);
-
-      // 3. Atualizar banco com dados do Inter
-      await supabase.from("cobrancas").update({
-        status: "gerada",
-        codigo_solicitacao: resultado.codigoSolicitacao,
-        nosso_numero: resultado.nossoNumero,
-        codigo_barras: resultado.codigoBarras,
-        linha_digitavel: resultado.linhaDigitavel,
-        pix_copia_cola: resultado.pixCopiaECola,
-      }).eq("id", cobSalva.id);
+        mesReferencia: form.mes_referencia,
+      });
 
       setSucesso("Cobrança gerada com sucesso!");
       setModalAberto(false);
@@ -195,7 +303,7 @@ export default function Cobrancas() {
 
       // 4. Abrir detalhes automaticamente
       setTimeout(() => {
-        setCobrancaAtual({ ...cobSalva, ...resultado, status: "gerada", clientes: clienteForm });
+        setCobrancaAtual(cobrancaCriada);
         setModalTipo("detalhe");
         setModalAberto(true);
       }, 300);
@@ -337,38 +445,43 @@ export default function Cobrancas() {
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
-  async function abrirEmail(cob) {
+  async function enviarEmailCobrancaSilencioso(cob) {
     const email = cob.clientes?.["email"] || "";
-    if (!email) return;
+    if (!email) throw new Error("Cliente sem e-mail cadastrado.");
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
     const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
 
+    let attachmentBase64 = null;
+    try {
+      attachmentBase64 = await buscarPdfBase64(cob);
+    } catch (pdfErr) {
+      console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
+    }
+
+    const resp = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: email,
+        subject: assunto,
+        text: corpo,
+        ...(attachmentBase64 ? { attachmentBase64, attachmentFilename: "boleto.pdf" } : {}),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
+    }
+    return { email, comAnexo: !!attachmentBase64 };
+  }
+
+  async function abrirEmail(cob) {
     setErro("");
     setSucesso("");
     setProcessando(true);
     try {
-      let attachmentBase64 = null;
-      try {
-        attachmentBase64 = await buscarPdfBase64(cob);
-      } catch (pdfErr) {
-        console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
-      }
-
-      const resp = await fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: email,
-          subject: assunto,
-          text: corpo,
-          ...(attachmentBase64 ? { attachmentBase64, attachmentFilename: "boleto.pdf" } : {}),
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
-      }
-      setSucesso(`E-mail enviado para ${email}${attachmentBase64 ? " (com boleto em PDF anexado)" : ""}`);
+      const { email, comAnexo } = await enviarEmailCobrancaSilencioso(cob);
+      setSucesso(`E-mail enviado para ${email}${comAnexo ? " (com boleto em PDF anexado)" : ""}`);
       setTimeout(() => setSucesso(""), 4000);
     } catch (e) {
       setErro(`Erro ao enviar e-mail: ${e.message}`);
@@ -390,9 +503,14 @@ export default function Cobrancas() {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-gray-800 text-lg">🏦 Cobranças</h2>
-            <button onClick={() => abrirNovaCobranca()} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
-              + Nova
-            </button>
+            <div className="flex gap-1.5">
+              <button onClick={abrirLote} className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-purple-700 font-medium">
+                📦 Lote
+              </button>
+              <button onClick={() => abrirNovaCobranca()} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
+                + Nova
+              </button>
+            </div>
           </div>
           <input
             type="text"
@@ -680,6 +798,119 @@ export default function Cobrancas() {
                   </button>
                   <button onClick={() => setModalAberto(false)} className="text-gray-400 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancelar</button>
                 </div>
+              </div>
+            )}
+            {/* Modal Cobrança em Lote */}
+            {modalTipo === "lote" && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">📦 Cobranças em Lote</h2>
+                  <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+
+                {loteResultados.length === 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Vencimento</label>
+                        <input type="date" value={loteVencimento} onChange={e => setLoteVencimento(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Mês de referência</label>
+                        <input type="month" value={loteMesReferencia} onChange={e => setLoteMesReferencia(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Buscar cliente..."
+                      value={loteBusca}
+                      onChange={e => setLoteBusca(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+
+                    <div className="flex items-center justify-between mb-2 text-xs text-gray-500">
+                      <span>{loteSelecionados.length} cliente(s) selecionado(s)</span>
+                      <div className="flex gap-3">
+                        <button onClick={() => setLoteSelecionados(clientes.filter(c => c["valor_honorario"] && c.nome.toLowerCase().includes(loteBusca.toLowerCase())).map(c => c.id))} className="text-purple-600 hover:underline">Selecionar todos</button>
+                        <button onClick={() => setLoteSelecionados([])} className="text-gray-400 hover:underline">Limpar</button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
+                      {clientes
+                        .filter(c => c.nome.toLowerCase().includes(loteBusca.toLowerCase()))
+                        .map(c => (
+                          <label key={c.id} className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${!c["valor_honorario"] ? "opacity-50" : ""}`}>
+                            <input
+                              type="checkbox"
+                              disabled={!c["valor_honorario"]}
+                              checked={loteSelecionados.includes(c.id)}
+                              onChange={() => alternarClienteLote(c.id)}
+                              className="w-4 h-4"
+                            />
+                            <span className="flex-1 truncate">{c.nome}</span>
+                            <span className="text-xs text-gray-400">
+                              {c["valor_honorario"] ? formatarValor(c["valor_honorario"]) : "sem honorário"}
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+
+                    {erro && <p className="text-red-500 text-sm mt-3">{erro}</p>}
+
+                    <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+                      <button onClick={gerarCobrancasEmLote} disabled={loteProcessando || loteSelecionados.length === 0}
+                        className="flex-1 bg-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                        {loteProcessando
+                          ? <><span className="animate-spin">⚙️</span> Gerando {loteProgresso.atual}/{loteProgresso.total}...</>
+                          : `🏦 Gerar ${loteSelecionados.length || ""} cobrança(s)`}
+                      </button>
+                      <button onClick={() => setModalAberto(false)} className="text-gray-400 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancelar</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm text-gray-600">
+                        {loteResultados.filter(r => r.status === "ok").length} de {loteResultados.length} geradas com sucesso
+                      </p>
+                      <button onClick={enviarTodosEmailsLote} disabled={loteEnviandoEmails || !loteResultados.some(r => r.status === "ok" && r.cobranca.clientes?.["email"])}
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+                        {loteEnviandoEmails ? "Enviando e-mails..." : "✉️ Enviar todos os e-mails"}
+                      </button>
+                    </div>
+
+                    <div className="max-h-96 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
+                      {loteResultados.map((r, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2.5 text-sm">
+                          <span className="flex-1 truncate">{r.cliente.nome}</span>
+                          {r.status === "erro" ? (
+                            <span className="text-xs text-red-500">❌ {r.mensagem}</span>
+                          ) : (
+                            <>
+                              <span className="text-xs text-green-600 mr-1">✅ {formatarValor(r.cobranca.valor)}</span>
+                              {r.emailEnviado === true && <span className="text-xs text-indigo-600">✉️ enviado</span>}
+                              {r.emailEnviado === false && <span className="text-xs text-red-500" title={r.emailErro}>✉️ falhou</span>}
+                              {r.cliente.telefone && (
+                                <button onClick={() => abrirWhatsApp(r.cobranca)} className="bg-green-500 text-white px-2 py-1 rounded-lg text-xs hover:bg-green-600">📱</button>
+                              )}
+                              {r.cliente["email"] && (
+                                <button onClick={() => abrirEmail(r.cobranca)} className="bg-indigo-600 text-white px-2 py-1 rounded-lg text-xs hover:bg-indigo-700 ml-1">✉️</button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+                      <button onClick={() => setModalAberto(false)} className="flex-1 bg-gray-100 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200">Concluir</button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
