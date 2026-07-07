@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  const { to, subject, text, html } = req.body || {};
+  const { to, subject, text, html, attachmentBase64, attachmentFilename } = req.body || {};
 
   if (!to || !subject || (!text && !html)) {
     return res.status(400).json({ error: 'Campos obrigatórios: to, subject e text ou html' });
@@ -41,12 +41,20 @@ export default async function handler(req, res) {
   try {
     const transporter = buildTransport();
 
+    const attachments = attachmentBase64
+      ? [{
+          filename: attachmentFilename || 'anexo.pdf',
+          content: Buffer.from(attachmentBase64, 'base64'),
+        }]
+      : undefined;
+
     const info = await transporter.sendMail({
       from: `"CARSANT Contabilidade" <${process.env.SMTP_USER}>`,
       to,
       subject,
       text: text || undefined,
       html: html || undefined,
+      attachments,
     });
 
     return res.status(200).json({ success: true, messageId: info.messageId });

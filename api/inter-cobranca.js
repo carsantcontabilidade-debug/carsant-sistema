@@ -119,18 +119,31 @@ export default async function handler(req, res) {
     let resultado;
 
     if (action === 'criar_cobranca') {
-      const inter = await interRequest({
+      const criacao = await interRequest({
         path: '/cobranca/v3/cobrancas',
         method: 'POST',
         body: payload,
         headers: authHeaders,
         agent,
       });
+
+      // A API v3 do Inter só devolve o codigoSolicitacao na criação.
+      // Os dados completos (Pix copia-e-cola, linha digitável, código de
+      // barras) só vêm numa consulta subsequente.
+      const codigoSolicitacao = criacao.codigoSolicitacao;
+      const inter = await interRequest({
+        path: `/cobranca/v3/cobrancas/${codigoSolicitacao}`,
+        method: 'GET',
+        headers: authHeaders,
+        agent,
+      });
+
       resultado = {
-        codigoSolicitacao: inter.codigoSolicitacao,
-        nossoNumero: inter.cobranca?.nossoNumero || inter.nossoNumero,
-        codigoBarras: inter.boleto?.codigoBarras || inter.codigoBarras,
-        linhaDigitavel: inter.boleto?.linhaDigitavel || inter.linhaDigitavel,
+        codigoSolicitacao,
+        nossoNumero: inter.boleto?.nossoNumero,
+        codigoBarras: inter.boleto?.codigoBarras,
+        linhaDigitavel: inter.boleto?.linhaDigitavel,
+        pixCopiaECola: inter.pix?.pixCopiaECola,
       };
     } else if (action === 'consultar_cobranca') {
       const inter = await interRequest({
@@ -141,8 +154,20 @@ export default async function handler(req, res) {
       });
       resultado = {
         situacao: inter.cobranca?.situacao || inter.situacao,
+        nossoNumero: inter.boleto?.nossoNumero,
+        codigoBarras: inter.boleto?.codigoBarras,
+        linhaDigitavel: inter.boleto?.linhaDigitavel,
+        pixCopiaECola: inter.pix?.pixCopiaECola,
         ...inter,
       };
+    } else if (action === 'obter_pdf_cobranca') {
+      const inter = await interRequest({
+        path: `/cobranca/v3/cobrancas/${payload.codigoSolicitacao}/pdf`,
+        method: 'GET',
+        headers: authHeaders,
+        agent,
+      });
+      resultado = { pdfBase64: inter.pdf };
     } else if (action === 'cancelar_cobranca') {
       await interRequest({
         path: `/cobranca/v3/cobrancas/${payload.codigoSolicitacao}/cancelar`,

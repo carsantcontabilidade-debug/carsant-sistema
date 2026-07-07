@@ -187,7 +187,6 @@ export default function Cobrancas() {
         codigo_barras: resultado.codigoBarras,
         linha_digitavel: resultado.linhaDigitavel,
         pix_copia_cola: resultado.pixCopiaECola,
-        link_boleto: resultado.linkVisualizacaoBoleto,
       }).eq("id", cobSalva.id);
 
       setSucesso("Cobrança gerada com sucesso!");
@@ -222,6 +221,9 @@ export default function Cobrancas() {
       await supabase.from("cobrancas").update({
         status: novoStatus,
         paga_em: resultado.situacao === "PAGO" ? new Date().toISOString() : null,
+        codigo_barras: resultado.codigoBarras || cobranca.codigo_barras,
+        linha_digitavel: resultado.linhaDigitavel || cobranca.linha_digitavel,
+        pix_copia_cola: resultado.pixCopiaECola || cobranca.pix_copia_cola,
       }).eq("id", cobranca.id);
       carregarCobrancas();
       setSucesso("Status atualizado!");
@@ -267,6 +269,28 @@ export default function Cobrancas() {
     setTimeout(() => setSucesso(""), 2000);
   }
 
+  async function buscarPdfBase64(cob) {
+    if (!cob.codigo_solicitacao) return null;
+    const resultado = await chamarEdgeFunction("obter_pdf_cobranca", {
+      codigoSolicitacao: cob.codigo_solicitacao,
+    });
+    if (resultado.error) throw new Error(resultado.error);
+    return resultado.pdfBase64 || null;
+  }
+
+  async function verBoleto(cob) {
+    setErro("");
+    setProcessando(true);
+    try {
+      const pdfBase64 = await buscarPdfBase64(cob);
+      if (!pdfBase64) throw new Error("PDF não disponível para esta cobrança.");
+      window.open(`data:application/pdf;base64,${pdfBase64}`, "_blank");
+    } catch (e) {
+      setErro(`Erro ao abrir boleto: ${e.message}`);
+    }
+    setProcessando(false);
+  }
+
   function abrirWhatsApp(cob) {
     const tel = cob.clientes?.telefone?.replace(/\D/g, "");
     if (!tel) return;
@@ -284,16 +308,28 @@ export default function Cobrancas() {
     setSucesso("");
     setProcessando(true);
     try {
+      let attachmentBase64 = null;
+      try {
+        attachmentBase64 = await buscarPdfBase64(cob);
+      } catch (pdfErr) {
+        console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
+      }
+
       const resp = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: email, subject: assunto, text: corpo }),
+        body: JSON.stringify({
+          to: email,
+          subject: assunto,
+          text: corpo,
+          ...(attachmentBase64 ? { attachmentBase64, attachmentFilename: "boleto.pdf" } : {}),
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) {
         throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
       }
-      setSucesso(`E-mail enviado para ${email}`);
+      setSucesso(`E-mail enviado para ${email}${attachmentBase64 ? " (com boleto em PDF anexado)" : ""}`);
       setTimeout(() => setSucesso(""), 4000);
     } catch (e) {
       setErro(`Erro ao enviar e-mail: ${e.message}`);
@@ -493,10 +529,10 @@ export default function Cobrancas() {
 
                 {/* Ações */}
                 <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-gray-100">
-                  {cobrancaAtual.link_boleto && (
-                    <a href={cobrancaAtual.link_boleto} target="_blank" rel="noreferrer" className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700">
+                  {cobrancaAtual.codigo_solicitacao && (
+                    <button onClick={() => verBoleto(cobrancaAtual)} disabled={processando} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                       🖨️ Ver boleto
-                    </a>
+                    </button>
                   )}
                   {cobrancaAtual.clientes?.telefone && cobrancaAtual.status === "gerada" && (
                     <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
