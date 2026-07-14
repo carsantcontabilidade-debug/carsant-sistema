@@ -63,11 +63,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Este cliente não tem e-mail cadastrado.' });
   }
 
-  if (cliente.auth_user_id) {
-    return res.status(409).json({ error: 'Este cliente já tem acesso ao portal.' });
-  }
-
   const redirectTo = `${req.headers.origin || ''}/portal/definir-senha`;
+
+  // Já tem conta vinculada (convite anterior) — reenvia um link de definição
+  // de senha em vez de tentar criar a conta de novo (o Supabase rejeita
+  // convite duplicado para um e-mail que já existe em auth.users).
+  if (cliente.auth_user_id) {
+    const { error: reenvioError } = await admin.auth.resetPasswordForEmail(cliente.email, { redirectTo });
+    if (reenvioError) {
+      return res.status(502).json({ error: `Falha ao reenviar link: ${reenvioError.message}` });
+    }
+    return res.status(200).json({ success: true, reenviado: true });
+  }
 
   const { data: convite, error: conviteError } = await admin.auth.admin.inviteUserByEmail(
     cliente.email,

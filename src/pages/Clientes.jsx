@@ -114,7 +114,11 @@ export default function Clientes() {
       alert('Este cliente não tem e-mail cadastrado. Adicione um e-mail antes de convidar.')
       return
     }
-    if (!window.confirm(`Enviar convite do Portal do Cliente para ${cliente.email}?`)) return
+    const jaTemAcesso = !!cliente.auth_user_id
+    const pergunta = jaTemAcesso
+      ? `Reenviar o link de acesso ao Portal para ${cliente.email}?`
+      : `Enviar convite do Portal do Cliente para ${cliente.email}?`
+    if (!window.confirm(pergunta)) return
     setConvidando(cliente.id)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -128,7 +132,7 @@ export default function Clientes() {
       })
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.error || 'Falha ao enviar convite')
-      alert(`Convite enviado para ${cliente.email}.`)
+      alert(jaTemAcesso ? `Link reenviado para ${cliente.email}.` : `Convite enviado para ${cliente.email}.`)
       fetchClientes()
     } catch (err) {
       alert(err.message)
@@ -205,20 +209,19 @@ export default function Clientes() {
                       {isGestor && <>
                         <button onClick={() => abrirEditar(c)} className="btn-ghost btn-sm p-1.5"><Edit2 className="w-3.5 h-3.5" /></button>
                         <button onClick={() => remover(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
-                        {c.auth_user_id ? (
-                          <span className="btn-ghost btn-sm p-1.5 text-green-600" title="Já tem acesso ao Portal do Cliente">
+                        {c.auth_user_id && (
+                          <span className="text-green-600" title="Já tem acesso ao Portal do Cliente">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                           </span>
-                        ) : (
-                          <button
-                            onClick={() => convidarPortal(c)}
-                            disabled={convidando === c.id}
-                            className="btn-ghost btn-sm p-1.5 text-brand-600 hover:bg-brand-50"
-                            title="Convidar para o Portal do Cliente"
-                          >
-                            {convidando === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-                          </button>
                         )}
+                        <button
+                          onClick={() => convidarPortal(c)}
+                          disabled={convidando === c.id}
+                          className="btn-ghost btn-sm p-1.5 text-brand-600 hover:bg-brand-50"
+                          title={c.auth_user_id ? 'Reenviar link de acesso ao Portal' : 'Convidar para o Portal do Cliente'}
+                        >
+                          {convidando === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                        </button>
                       </>}
                     </div>
                   </td>
