@@ -14,6 +14,7 @@ import Agenda from './pages/Agenda'
 import RelatorioInadimplencia from './pages/RelatorioInadimplencia'
 import Comunicacao from './pages/Comunicacao'
 import Cobrancas from './pages/Cobrancas'
+import Documentos from './pages/Documentos'
 import PortalLogin from './pages/portal/PortalLogin'
 import PortalDefinirSenha from './pages/portal/PortalDefinirSenha'
 import PortalHome from './pages/portal/PortalHome'
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="atendimento" element={<Atendimento />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="comunicacao" element={<Comunicacao />} />
+        <Route path="documentos" element={<Documentos />} />
         <Route path="cobrancas" element={<GestorRoute><Cobrancas /></GestorRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" />} />

@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt
+  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen
 } from 'lucide-react'
 
 const navItems = [
@@ -26,6 +26,7 @@ const navItems = [
   { to: '/atendimento',  icon: Headphones,       label: 'Atendimento',    somenteGestor: false },
   { to: '/agenda',      icon: Calendar,   label: 'Agenda',      somenteGestor: false },
   { to: '/comunicacao', icon: Headphones, label: 'Comunicação', somenteGestor: false },
+  { to: '/documentos', icon: FolderOpen, label: 'Documentos', somenteGestor: false },
 ]
 export default function Layout() {
   const { profile, signOut, isGestor } = useAuth()

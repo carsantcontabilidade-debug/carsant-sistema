@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePortalAuth } from '../../contexts/PortalAuthContext'
 import { supabase } from '../../lib/supabase'
+import { sanitizarNomeArquivo } from '../../lib/storage'
 import { Loader2, Upload, Download, FileText } from 'lucide-react'
 
 const CATEGORIAS_ENVIO = [
@@ -61,12 +62,7 @@ export default function PortalDocumentos() {
     if (!arquivo) return
     setEnviando(true)
     try {
-      // Supabase Storage não aceita espaços/acentos na chave do arquivo —
-      // sanitiza para o path, mas guarda o nome original em nome_arquivo.
-      const nomeSanitizado = arquivo.name
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-zA-Z0-9._-]/g, '_')
-      const path = `${cliente.id}/${Date.now()}_${nomeSanitizado}`
+      const path = `${cliente.id}/${Date.now()}_${sanitizarNomeArquivo(arquivo.name)}`
       const { error: uploadError } = await supabase.storage.from('documentos-clientes').upload(path, arquivo)
       if (uploadError) throw uploadError
 
