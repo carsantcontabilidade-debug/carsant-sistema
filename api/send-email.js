@@ -1,24 +1,4 @@
-import nodemailer from 'nodemailer';
-
-// Servidor SMTP do UOL HOST (E-mail Profissional / domínio próprio).
-// IMPORTANTE: para contas @uol.com.br pessoais o servidor é smtps.uol.com.br,
-// mas para domínio próprio (E-mail Profissional / UOL Host, como
-// carsantcontabilidade.com.br) o servidor correto é smtps.uhserver.com.
-const SMTP_HOST = process.env.SMTP_HOST || 'smtps.uhserver.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-
-function buildTransport() {
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465, // true para 465 (SSL), false para 587 (STARTTLS)
-    requireTLS: SMTP_PORT !== 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-}
+import { buildTransport } from './_mailer.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
