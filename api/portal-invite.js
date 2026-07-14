@@ -63,6 +63,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Este cliente não tem e-mail cadastrado.' });
   }
 
+  // Impede convidar um e-mail que já pertence a uma conta da equipe (staff).
+  // O Supabase reaproveita a conta existente em vez de recusar, o que
+  // vincularia esse cliente à própria conta do gestor/colaborador.
+  const { data: usuarios } = await admin.auth.admin.listUsers();
+  const usuarioExistente = usuarios?.users?.find(
+    (u) => u.email?.toLowerCase() === cliente.email.toLowerCase()
+  );
+  if (usuarioExistente) {
+    const { data: perfilExistente } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('id', usuarioExistente.id)
+      .maybeSingle();
+    if (perfilExistente) {
+      return res.status(409).json({
+        error: 'Este e-mail já pertence a uma conta da equipe (staff). Cadastre um e-mail próprio para este cliente antes de convidar.',
+      });
+    }
+  }
+
   const redirectTo = `${req.headers.origin || ''}/portal/definir-senha`;
 
   // Já tem conta vinculada (convite anterior) — reenvia um link de definição
