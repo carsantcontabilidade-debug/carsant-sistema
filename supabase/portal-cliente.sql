@@ -130,3 +130,31 @@ create policy "documentos_clientes_storage_proprio_insert"
     bucket_id = 'documentos-clientes'
     and (storage.foldername(name))[1] = cliente_id_do_usuario()::text
   );
+
+-- =====================================================
+-- 6. Corrige handle_new_user() para não criar profiles (staff) para
+-- contas de cliente do Portal — o gatilho original (schema.sql) cria uma
+-- linha em profiles para QUALQUER novo usuário do Supabase Auth, o que
+-- fazia todo cliente convidado ser confundido com um funcionário assim
+-- que a conta era criada (api/portal-invite.js passa cliente_id no
+-- metadata do usuário exatamente para diferenciar esse caso).
+-- =====================================================
+create or replace function handle_new_user()
+returns trigger as $$
+begin
+  if new.raw_user_meta_data ? 'cliente_id' then
+    return new;
+  end if;
+  insert into profiles (id, nome, email)
+  values (new.id, coalesce(new.raw_user_meta_data->>'nome', split_part(new.email, '@', 1)), new.email);
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Remove profiles criados por engano para contas que na verdade são
+-- de clientes do Portal (identificadas pelo cliente_id no metadata).
+delete from profiles
+where id in (
+  select u.id from auth.users u
+  where u.raw_user_meta_data ? 'cliente_id'
+);

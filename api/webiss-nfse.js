@@ -5,6 +5,7 @@
 // api/inter-cobranca.js. Antes de usar em produção, preencher os TODOs abaixo
 // com os dados cadastrais da CARSANT e a URL do Web Service de homologação/produção.
 
+import https from 'https';
 import { SignedXml } from 'xml-crypto';
 
 // ─── Configuração da CARSANT (preencher) ───────────────────────────────────
@@ -26,12 +27,13 @@ export const ITENS_LISTA_SERVICO = {
   TREINAMENTO: '0802', // Ensino, treinamento, orientação pedagógica
 };
 
-// Endpoints do WebISS Feira de Santana (plataforma IBAM/ABRASF).
-// TODO: confirmar URL exata assim que o acesso ao Web Service de Homologação
-// for liberado por callcenter2@webiss.com.br ou pelo portal (Downloads e Manuais).
+// Endpoints do WebISS Feira de Santana (plataforma IBAM/ABRASF), confirmados
+// via WSDL em 14/07/2026 (nfse.wsdl de cada ambiente, elemento soap:address).
+// Homologação exige CeC próprio (distinto do CeC de produção) em
+// https://homologacao.webiss.com.br/ — ver seção 25 da documentação do projeto.
 const WEBISS_URLS = {
-  homologacao: process.env.WEBISS_HOMOLOGACAO_URL || 'TODO_URL_HOMOLOGACAO',
-  producao: process.env.WEBISS_PRODUCAO_URL || 'TODO_URL_PRODUCAO',
+  homologacao: process.env.WEBISS_HOMOLOGACAO_URL || 'https://homologacao.webiss.com.br/ws/nfse.asmx',
+  producao: process.env.WEBISS_PRODUCAO_URL || 'https://feiradesantanaba.webiss.com.br/ws/nfse.asmx',
 };
 
 // Certificado A1 (e-CNPJ da CARSANT) em PEM, cadastrado na Vercel.
@@ -193,14 +195,93 @@ export function montarDpsAssinada(dados, credenciais = WEBISS_CREDENCIAIS) {
   return montarGerarNfseEnvio(dpsAssinada);
 }
 
-// ─── Transporte SOAP (TODO: completar quando a URL de homologação for confirmada) ──
+// ─── Transporte SOAP — confirmado via WSDL (nfse.wsdl) de cada ambiente ────
 //
-// O Web Service WebISS espera o XML como string dentro de um wrapper SOAP,
-// no formato: <nfseCabecMsg>...</nfseCabecMsg><nfseDadosMsg>...</nfseDadosMsg>
-// (ver wsdl_nfse_v2.zip / nfse.wsdl). Esta função ainda não está ativa.
-export async function enviarGerarNfse(_envelopeXml, _ambiente = 'homologacao') {
-  throw new Error(
-    'Endpoint do Web Service ainda não configurado. Preencher WEBISS_HOMOLOGACAO_URL ' +
-    'assim que o link de acesso ao ambiente de homologação for obtido junto ao WebISS.'
-  );
+// Elemento nfseCabecMsg/nfseDadosMsg são strings simples no WSDL (ASP.NET
+// .asmx, SOAP 1.1, style document/literal) — o conteúdo XML do padrão ABRASF
+// vai dentro delas, como texto escapado. Cabeçalho segue o formato padrão
+// ABRASF (cabecalho.xsd), usado por praticamente toda prefeitura no padrão.
+function montarCabecalho() {
+  return `<cabecalho xmlns="http://www.abrasf.org.br/nfse.xsd" versao="2.02">` +
+    `<versaoDados>2.02</versaoDados>` +
+  `</cabecalho>`;
+}
+
+function unescapeXml(str) {
+  return String(str)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+// O WebISS exige intervalo mínimo de 5s entre requisições ao Web Service
+// (documentação oficial, 14/07/2026); se violado, ativa um Rate Limit que
+// exige 2 minutos sem nenhuma conexão antes de aceitar novas requisições.
+// Não há fila/throttling automático aqui pois o uso da CARSANT é de emissão
+// unitária diluída ao longo do dia — se no futuro isso passar a ser chamado
+// em lote, é necessário espaçar as chamadas em pelo menos 5s.
+export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
+  const urlStr = WEBISS_URLS[ambiente];
+  if (!urlStr || urlStr.startsWith('TODO_')) {
+    throw new Error(`URL do Web Service (${ambiente}) não configurada.`);
+  }
+  const url = new URL(urlStr);
+
+  const soapBody =
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">` +
+      `<soap:Body>` +
+        `<GerarNfse xmlns="http://nfse.abrasf.org.br">` +
+          `<nfseCabecMsg>${escapeXml(montarCabecalho())}</nfseCabecMsg>` +
+          `<nfseDadosMsg>${escapeXml(envelopeXml)}</nfseDadosMsg>` +
+        `</GerarNfse>` +
+      `</soap:Body>` +
+    `</soap:Envelope>`;
+
+  const agent = new https.Agent({
+    cert: WEBISS_CREDENCIAIS.certPem,
+    key: WEBISS_CREDENCIAIS.keyPem,
+  });
+
+  const outputXml = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'POST',
+      agent,
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        SOAPAction: 'http://nfse.abrasf.org.br/GerarNfse',
+        'Content-Length': Buffer.byteLength(soapBody),
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', (chunk) => { raw += chunk; });
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`WebISS retornou HTTP ${res.statusCode}: ${raw.slice(0, 500)}`));
+        }
+        const match = raw.match(/<outputXML>([\s\S]*?)<\/outputXML>/);
+        if (!match) {
+          return reject(new Error(`Resposta do WebISS sem outputXML: ${raw.slice(0, 500)}`));
+        }
+        resolve(unescapeXml(match[1]));
+      });
+    });
+    req.on('error', reject);
+    req.write(soapBody);
+    req.end();
+  });
+
+  const erro = outputXml.match(/<ListaMensagemRetorno[\s\S]*?<\/ListaMensagemRetorno>/);
+  if (erro) {
+    const codigos = [...outputXml.matchAll(/<Codigo>(.*?)<\/Codigo>/g)].map((m) => m[1]);
+    const mensagens = [...outputXml.matchAll(/<Mensagem>(.*?)<\/Mensagem>/g)].map((m) => m[1]);
+    const detalhes = mensagens.map((m, i) => `[${codigos[i] || '?'}] ${m}`).join('; ');
+    throw new Error(`WebISS recusou a emissão: ${detalhes || outputXml}`);
+  }
+
+  return outputXml;
 }
