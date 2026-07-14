@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2 } from 'lucide-react'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, regimes: ['MEI'] },
@@ -39,6 +39,7 @@ export default function Clientes() {
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [obrSel, setObrSel] = useState({}) // {obrId: {sel: bool, resp: string}}
+  const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
 
   useEffect(() => { fetchClientes() }, [])
 
@@ -106,6 +107,34 @@ export default function Clientes() {
     if (!window.confirm('Remover este cliente?')) return
     await supabase.from('clientes').delete().eq('id', id)
     fetchClientes()
+  }
+
+  async function convidarPortal(cliente) {
+    if (!cliente.email) {
+      alert('Este cliente não tem e-mail cadastrado. Adicione um e-mail antes de convidar.')
+      return
+    }
+    if (!window.confirm(`Enviar convite do Portal do Cliente para ${cliente.email}?`)) return
+    setConvidando(cliente.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/portal-invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ clienteId: cliente.id }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao enviar convite')
+      alert(`Convite enviado para ${cliente.email}.`)
+      fetchClientes()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setConvidando(null)
+    }
   }
 
   const filtrados = clientes.filter(c =>
@@ -176,6 +205,20 @@ export default function Clientes() {
                       {isGestor && <>
                         <button onClick={() => abrirEditar(c)} className="btn-ghost btn-sm p-1.5"><Edit2 className="w-3.5 h-3.5" /></button>
                         <button onClick={() => remover(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                        {c.auth_user_id ? (
+                          <span className="btn-ghost btn-sm p-1.5 text-green-600" title="Já tem acesso ao Portal do Cliente">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => convidarPortal(c)}
+                            disabled={convidando === c.id}
+                            className="btn-ghost btn-sm p-1.5 text-brand-600 hover:bg-brand-50"
+                            title="Convidar para o Portal do Cliente"
+                          >
+                            {convidando === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
                       </>}
                     </div>
                   </td>
