@@ -7,10 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        cleanupOutdatedCaches: true,
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
       },
       manifest: {
         name: 'CARSANT Contabilidade',

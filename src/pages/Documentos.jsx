@@ -88,6 +88,8 @@ export default function Documentos() {
       })
       if (insertError) throw insertError
 
+      notificarCliente(clienteSelecionado.id, categoria)
+
       setArquivo(null)
       setMesReferencia('')
       carregarDocumentos()
@@ -95,6 +97,28 @@ export default function Documentos() {
       alert(`Falha ao enviar o documento: ${err.message}`)
     } finally {
       setEnviando(false)
+    }
+  }
+
+  // Falha ao notificar não deve impedir o upload — é só um aviso a mais.
+  async function notificarCliente(clienteId, categoria) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/portal-notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          clienteId,
+          title: 'Novo documento da CARSANT',
+          body: `${CATEGORIA_LABEL[categoria] || categoria} disponível no Portal do Cliente.`,
+          url: '/portal/documentos',
+        }),
+      })
+    } catch {
+      // silencioso — notificação é um extra, não deve travar o fluxo principal
     }
   }
 
