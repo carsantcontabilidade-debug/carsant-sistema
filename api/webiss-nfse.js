@@ -1,4 +1,4 @@
-// Integração NFS-e - WebISS Feira de Santana (padrão ABRASF v2.01)
+// Integração NFS-e - WebISS Feira de Santana (padrão ABRASF v2.02 IBSCBS)
 // Gera e assina a DPS (Declaração de Prestação de Serviço) para emissão de NFS-e.
 //
 // Segue o mesmo padrão de mTLS/certificado por variável de ambiente usado em
@@ -34,6 +34,12 @@ const WEBISS_URLS = {
   producao: process.env.WEBISS_PRODUCAO_URL || 'TODO_URL_PRODUCAO',
 };
 
+// Certificado A1 (e-CNPJ da CARSANT) em PEM, cadastrado na Vercel.
+const WEBISS_CREDENCIAIS = {
+  certPem: process.env.WEBISS_CERT_PEM,
+  keyPem: process.env.WEBISS_KEY_PEM,
+};
+
 // ─── Helpers de formatação (seguem o padrão de tipos simples do schema ABRASF) ──
 function escapeXml(str) {
   return String(str)
@@ -50,8 +56,14 @@ function formatarValor(v) {
 }
 
 function formatarCompetencia(date = new Date()) {
-  // tsCompetencia é dateTime (AAAA-MM-DDTHH:mm:ss) no schema v2.01
+  // DataEmissao (Rps) é dateTime (AAAA-MM-DDTHH:mm:ss)
   return date.toISOString().replace(/\.\d{3}Z$/, '');
+}
+
+function formatarData(date = new Date()) {
+  // Competencia é xsd:date (AAAA-MM-DD) no schema pós-Reforma (v2.02 IBSCBS),
+  // diferente de DataEmissao que continua dateTime.
+  return date.toISOString().slice(0, 10);
 }
 
 // ─── Montagem da DPS (InfDeclaracaoPrestacaoServico) ───────────────────────
@@ -83,7 +95,7 @@ export function montarInfDeclaracaoDps(dados) {
       `<DataEmissao>${formatarCompetencia(dados.dataEmissaoRps || new Date())}</DataEmissao>` +
       `<Status>1</Status>` +
     `</Rps>` +
-    `<Competencia>${formatarCompetencia(dados.competencia || new Date())}</Competencia>` +
+    `<Competencia>${formatarData(dados.competencia || new Date())}</Competencia>` +
     `<Servico>` +
       `<Valores>` +
         `<ValorServicos>${valorServicos}</ValorServicos>` +
@@ -172,7 +184,9 @@ export function montarGerarNfseEnvio(dpsAssinadaXml) {
 }
 
 // Monta a DPS completa (dados + assinatura), pronta para envio.
-export function montarDpsAssinada(dados, credenciais) {
+// credenciais é opcional: por padrão usa o certificado WEBISS_CERT_PEM/WEBISS_KEY_PEM
+// cadastrado na Vercel; passar explicitamente só é necessário em testes locais.
+export function montarDpsAssinada(dados, credenciais = WEBISS_CREDENCIAIS) {
   const infXml = montarInfDeclaracaoDps(dados);
   const idTag = `dps_${CARSANT.cnpj}_${dados.rpsSerie || 1}_${dados.rpsNumero}`;
   const dpsAssinada = assinarInfDeclaracao(infXml, idTag, credenciais);

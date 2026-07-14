@@ -2,8 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  gerarMensagemWhatsApp,
-  gerarCorpoEmail,
   TEMPLATES,
   CANAIS,
   formatarTelefone,
