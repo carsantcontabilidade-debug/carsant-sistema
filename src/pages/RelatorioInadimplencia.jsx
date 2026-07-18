@@ -109,7 +109,12 @@ export default function RelatorioInadimplencia() {
   async function exportarPDF() {
     setGerandoPDF(true);
     try {
-      const html2pdf = (await import("https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js")).default;
+      // html2pdf.bundle.min.js é um bundle UMD, não um módulo ES — o import()
+      // só serve para carregá-lo (ele se registra como window.html2pdf).
+      if (!window.html2pdf) {
+        await import("https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js");
+      }
+      const html2pdf = window.html2pdf;
       const element = previewRef.current;
       const opt = {
         margin: [10, 10, 10, 10],
