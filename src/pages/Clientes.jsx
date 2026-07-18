@@ -95,12 +95,12 @@ export default function Clientes() {
     setSaving(true)
     const obrigacoes = Object.entries(obrSel).filter(([,v]) => v.sel).map(([id,v]) => ({ id, resp: v.resp }))
     const payload = { ...form, valor_honorario: parseFloat(form.valor_honorario) || 0, dia_vencimento: parseInt(form.dia_vencimento) || 10, obrigacoes }
-    if (editId) {
-      await supabase.from('clientes').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('clientes').insert(payload)
-    }
-    setSaving(false); setModalOpen(false); fetchClientes()
+    const { error } = editId
+      ? await supabase.from('clientes').update(payload).eq('id', editId)
+      : await supabase.from('clientes').insert(payload)
+    setSaving(false)
+    if (error) { alert(`Erro ao salvar cliente: ${error.message}`); return }
+    setModalOpen(false); fetchClientes()
   }
 
   async function remover(id) {

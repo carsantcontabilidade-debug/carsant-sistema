@@ -58,9 +58,12 @@ export default function ContasPagar() {
     if (!form.descricao) return
     setSaving(true)
     const payload = { ...form, valor: parseFloat(form.valor) || 0, dia_vencimento: parseInt(form.dia_vencimento) || 10 }
-    if (editId) await supabase.from('despesas').update(payload).eq('id', editId)
-    else await supabase.from('despesas').insert(payload)
-    setSaving(false); setModalOpen(false); fetchDados()
+    const { error } = editId
+      ? await supabase.from('despesas').update(payload).eq('id', editId)
+      : await supabase.from('despesas').insert(payload)
+    setSaving(false)
+    if (error) { alert(`Erro ao salvar despesa: ${error.message}`); return }
+    setModalOpen(false); fetchDados()
   }
 
   async function remover(id) {

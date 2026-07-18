@@ -142,6 +142,7 @@ export default function Comunicacao() {
       carregarComunicacoes(clienteSelecionado?.id || null);
     } else {
       console.error("Erro ao registrar:", error);
+      alert(`Erro ao registrar comunicação: ${error.message}`);
     }
   }
 
