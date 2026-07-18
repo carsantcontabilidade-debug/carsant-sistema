@@ -125,6 +125,15 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: `Falha ao gerar link: ${linkError?.message || 'link não gerado'}` });
   }
 
+  // admin.generateLink() NÃO confirma o e-mail automaticamente (diferente de
+  // admin.inviteUserByEmail(), usado antes) — a confirmação só aconteceria
+  // quando o usuário clicasse o link, o que não é garantido dado o histórico
+  // de entrega instável de e-mail. Confirma direto aqui para a conta já
+  // funcionar mesmo que o e-mail nunca chegue.
+  if (!reenvio) {
+    await admin.auth.admin.updateUserById(linkData.user.id, { email_confirm: true });
+  }
+
   const authUserId = reenvio ? usuarioExistente.id : linkData.user.id;
   if (cliente.auth_user_id !== authUserId) {
     const { error: updateError } = await admin
