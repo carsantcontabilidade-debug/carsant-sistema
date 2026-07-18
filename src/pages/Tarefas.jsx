@@ -116,10 +116,13 @@ export default function Tarefas() {
     const prazo = form.prazo
     let status = form.status
     if (status !== 'concluida' && prazo && prazo < hojeStr) status = 'atrasada'
-    const payload = { ...form, status, gerada: false }
-    if (editId) await supabase.from('tarefas').update(payload).eq('id', editId)
-    else await supabase.from('tarefas').insert(payload)
-    setSaving(false); setModalOpen(false); fetchDados()
+    const payload = { ...form, prazo: prazo || null, status, gerada: false }
+    const { error } = editId
+      ? await supabase.from('tarefas').update(payload).eq('id', editId)
+      : await supabase.from('tarefas').insert(payload)
+    setSaving(false)
+    if (error) { alert(`Erro ao salvar tarefa: ${error.message}`); return }
+    setModalOpen(false); fetchDados()
   }
 
   const PRI = { alta: '🔴', media: '🟡', baixa: '⚪' }

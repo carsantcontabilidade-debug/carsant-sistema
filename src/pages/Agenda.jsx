@@ -101,7 +101,7 @@ export default function Agenda() {
         const jaExiste = eventos.find(e => e.google_event_id === ge.id)
         if (!jaExiste && ge.summary) {
           const data = ge.start?.date || ge.start?.dateTime?.substring(0, 10)
-          const hora = ge.start?.dateTime ? ge.start.dateTime.substring(11, 16) : ''
+          const hora = ge.start?.dateTime ? ge.start.dateTime.substring(11, 16) : null
           await supabase.from('eventos').insert({
             titulo: ge.summary,
             data,
@@ -141,19 +141,22 @@ export default function Agenda() {
   async function salvar() {
     if (!form.titulo) return
     setSaving(true)
+    const payload = { ...form, hora: form.hora || null }
     try {
       if (editId) {
-        await supabase.from('eventos').update(form).eq('id', editId)
+        const { error } = await supabase.from('eventos').update(payload).eq('id', editId)
+        if (error) throw error
         if (googleConectado && editGoogleId) {
-          await atualizarEventoGoogle(editGoogleId, form)
+          await atualizarEventoGoogle(editGoogleId, payload)
         } else if (googleConectado && !editGoogleId) {
-          const gId = await criarEventoGoogle(form)
+          const gId = await criarEventoGoogle(payload)
           if (gId) await supabase.from('eventos').update({ google_event_id: gId }).eq('id', editId)
         }
       } else {
-        const { data: novo } = await supabase.from('eventos').insert(form).select().single()
+        const { data: novo, error } = await supabase.from('eventos').insert(payload).select().single()
+        if (error) throw error
         if (googleConectado && novo) {
-          const gId = await criarEventoGoogle(form)
+          const gId = await criarEventoGoogle(payload)
           if (gId) await supabase.from('eventos').update({ google_event_id: gId }).eq('id', novo.id)
         }
       }
@@ -162,6 +165,7 @@ export default function Agenda() {
       if (googleConectado) mostrarSync('success', 'Evento salvo e sincronizado com Google Calendar')
     } catch (e) {
       console.error(e)
+      alert(`Erro ao salvar evento: ${e.message}`)
     } finally {
       setSaving(false)
     }

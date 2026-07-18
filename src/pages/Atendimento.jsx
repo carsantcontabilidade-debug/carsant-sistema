@@ -56,9 +56,13 @@ export default function Atendimento() {
   async function salvar() {
     if (!form.cliente_nome) return
     setSaving(true)
-    if (editId) await supabase.from('atendimentos').update(form).eq('id', editId)
-    else await supabase.from('atendimentos').insert(form)
-    setSaving(false); setModalOpen(false); fetchDados()
+    const payload = { ...form, data: form.data || null }
+    const { error } = editId
+      ? await supabase.from('atendimentos').update(payload).eq('id', editId)
+      : await supabase.from('atendimentos').insert(payload)
+    setSaving(false)
+    if (error) { alert(`Erro ao salvar atendimento: ${error.message}`); return }
+    setModalOpen(false); fetchDados()
   }
   async function remover(id) {
     if (!window.confirm('Remover este atendimento?')) return
