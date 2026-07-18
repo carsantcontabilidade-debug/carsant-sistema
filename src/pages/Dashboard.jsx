@@ -22,12 +22,13 @@ export default function Dashboard() {
 
   async function carregarDados() {
     setLoading(true)
-    const [clientes, despesas, tarefas, atendimentos, eventos] = await Promise.all([
+    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('tarefas').select('*'),
       supabase.from('atendimentos').select('*').order('data', { ascending: false }).limit(5),
       supabase.from('eventos').select('*').gte('data', format(hoje, 'yyyy-MM-dd')).order('data').limit(5),
+      supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtual).eq('ano', anoAtual),
     ])
     setData({
       clientes: clientes.data || [],
@@ -35,6 +36,7 @@ export default function Dashboard() {
       tarefas: tarefas.data || [],
       atendimentos: atendimentos.data || [],
       eventos: eventos.data || [],
+      pagamentos: pagamentos.data || [],
     })
     setLoading(false)
   }
@@ -45,14 +47,20 @@ export default function Dashboard() {
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos } = data
+  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos } = data
   const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
   const hojeStr = format(hoje, 'yyyy-MM-dd')
   const hoje7Str = format(hoje7, 'yyyy-MM-dd')
 
   // KPIs
   const totalHonorarios = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const inadimplentes = clientes.filter(c => c.status_pagamento === 'atraso')
+  const inadimplentes = clientes.filter(c => {
+    if (!(c.valor_honorario > 0)) return false
+    const pago = pagamentos.find(p => p.cliente_id === c.id)?.pago
+    if (pago) return false
+    const venc = new Date(anoAtual, mesAtual, c.dia_vencimento || 10)
+    return hoje > venc
+  })
   const tarefasAtrasadas = tarefas.filter(t => t.status === 'atrasada')
   const tarefasMinhas = isGestor ? tarefas : tarefas.filter(t => t.responsavel === profile?.nome)
   const eventosProximos = eventos.filter(e => e.data >= hojeStr && e.data <= hoje7Str)
