@@ -10,9 +10,23 @@ export default function PortalHome() {
   const [ativando, setAtivando] = useState(false)
 
   useEffect(() => {
-    if (!pushSuportado()) return
-    setNotifStatus(Notification.permission === 'granted' ? 'ativo' : Notification.permission === 'denied' ? 'negado' : 'pedir')
+    checarStatusNotificacoes()
   }, [])
+
+  async function checarStatusNotificacoes() {
+    if (!pushSuportado()) return
+    if (Notification.permission === 'denied') { setNotifStatus('negado'); return }
+    if (Notification.permission !== 'granted') { setNotifStatus('pedir'); return }
+    // Permissão concedida não significa que a inscrição foi salva com sucesso
+    // (ex: chave VAPID inválida na hora) — confirma se existe assinatura ativa.
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const sub = await registration.pushManager.getSubscription()
+      setNotifStatus(sub ? 'ativo' : 'pedir')
+    } catch {
+      setNotifStatus('pedir')
+    }
+  }
 
   async function ativarNotificacoes() {
     setAtivando(true)
