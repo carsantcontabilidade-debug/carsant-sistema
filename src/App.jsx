@@ -98,6 +98,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="clientes" element={<Clientes />} />
+          <Route path="tarefas" element={<Tarefas />} />
           <Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
           <Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
           <Route path="relatorio" element={<GestorRoute><RelatorioInadimplencia /></GestorRoute>} />
