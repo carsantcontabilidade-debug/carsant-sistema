@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck } from 'lucide-react'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, regimes: ['MEI'] },
@@ -40,6 +40,7 @@ export default function Clientes() {
   const [saving, setSaving] = useState(false)
   const [obrSel, setObrSel] = useState({}) // {obrId: {sel: bool, resp: string}}
   const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false)
 
   useEffect(() => { fetchClientes() }, [])
 
@@ -66,6 +67,36 @@ export default function Clientes() {
     setObrSel(sel)
     setEditId(c.id)
     setModalOpen(true)
+  }
+
+  async function buscarCnpj() {
+    const cnpjLimpo = form.cnpj.replace(/\D/g, '')
+    if (cnpjLimpo.length !== 14) {
+      alert('Digite um CNPJ completo (14 dígitos) para buscar. CPF não é consultável nessa base pública.')
+      return
+    }
+    setBuscandoCnpj(true)
+    try {
+      const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
+      if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado.' : 'Falha ao consultar a Receita Federal.')
+      const dados = await resp.json()
+
+      const regime = dados.opcao_pelo_mei ? 'MEI' : dados.opcao_pelo_simples ? 'Simples Nacional' : form.regime
+      const telefone = dados.ddd_telefone_1 || form.telefone
+      const email = dados.email || form.email
+
+      setForm(f => ({
+        ...f,
+        nome: dados.razao_social || f.nome,
+        regime,
+        telefone: f.telefone || telefone,
+        email: f.email || email,
+      }))
+    } catch (err) {
+      alert(`Não foi possível buscar o CNPJ: ${err.message}`)
+    } finally {
+      setBuscandoCnpj(false)
+    }
   }
 
   function sugerirObrigacoes() {
@@ -251,7 +282,18 @@ export default function Clientes() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">CNPJ / CPF</label>
-                  <input className="input" value={form.cnpj} onChange={e => setForm(f => ({...f, cnpj: e.target.value}))} placeholder="00.000.000/0001-00" />
+                  <div className="flex gap-1.5">
+                    <input className="input" value={form.cnpj} onChange={e => setForm(f => ({...f, cnpj: e.target.value}))} placeholder="00.000.000/0001-00" />
+                    <button
+                      type="button"
+                      onClick={buscarCnpj}
+                      disabled={buscandoCnpj || !form.cnpj}
+                      className="btn-secondary px-2.5 flex-shrink-0"
+                      title="Buscar dados na Receita Federal (só CNPJ)"
+                    >
+                      {buscandoCnpj ? <Loader2 className="w-4 h-4 animate-spin" /> : <SearchCheck className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Regime tributário</label>
