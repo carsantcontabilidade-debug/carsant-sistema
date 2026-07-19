@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { buscarColaboradores } from '../lib/colaboradores'
 import { Plus, Edit2, Trash2, Search, Loader2, X, Save, Wand2, Copy, Mail } from 'lucide-react'
 import { format } from 'date-fns'
 
 const CANAIS = ['whatsapp','email','call','presencial','outro']
 const CANAL_LABEL = { whatsapp: '📱 WhatsApp', email: '📧 E-mail', call: '📞 Telefone', presencial: '🤝 Presencial', outro: '💬 Outro' }
-const COLABS = ['Carlos','Ana','Pedro','Maria']
-const emptyForm = { cliente_nome: '', canal: 'whatsapp', data: format(new Date(), 'yyyy-MM-dd'), responsavel: 'Carlos', assunto: '', resumo: '', proximo_passo: '' }
+const emptyForm = { cliente_nome: '', canal: 'whatsapp', data: format(new Date(), 'yyyy-MM-dd'), responsavel: '', assunto: '', resumo: '', proximo_passo: '' }
 const TEMPLATES = [
   { id: 'cobranca', label: '💰 Cobrança', desc: 'Honorário vencido ou a vencer' },
   { id: 'prazo', label: '📅 Aviso de prazo', desc: 'DAS, DCTF, SPED...' },
@@ -35,8 +35,9 @@ export default function Atendimento() {
   const [emContexto, setEmContexto] = useState('')
   const [emailGerado, setEmailGerado] = useState('')
   const [gerandoEmail, setGerandoEmail] = useState(false)
+  const [colabs, setColabs] = useState([])
 
-  useEffect(() => { fetchDados() }, [])
+  useEffect(() => { fetchDados(); buscarColaboradores().then(setColabs) }, [])
 
   async function fetchDados() {
     setLoading(true)
@@ -48,7 +49,7 @@ export default function Atendimento() {
     setLoading(false)
   }
 
-  function abrirNovo() { setForm(emptyForm); setEditId(null); setModalOpen(true) }
+  function abrirNovo() { setForm({ ...emptyForm, responsavel: colabs[0] || '' }); setEditId(null); setModalOpen(true) }
   function abrirEditar(a) {
     setForm({ cliente_nome: a.cliente_nome, canal: a.canal, data: a.data, responsavel: a.responsavel, assunto: a.assunto || '', resumo: a.resumo || '', proximo_passo: a.proximo_passo || '' })
     setEditId(a.id); setModalOpen(true)
@@ -209,7 +210,7 @@ export default function Atendimento() {
                 <div className="form-group"><label className="form-label">Cliente *</label><input className="input" list="dl-at" value={form.cliente_nome} onChange={e => setForm(f=>({...f,cliente_nome:e.target.value}))}/><datalist id="dl-at">{clientes.map(c=><option key={c.id} value={c.nome}/>)}</datalist></div>
                 <div className="form-group"><label className="form-label">Canal</label><select className="select" value={form.canal} onChange={e => setForm(f=>({...f,canal:e.target.value}))}>{CANAIS.map(c=><option key={c} value={c}>{CANAL_LABEL[c]}</option>)}</select></div>
                 <div className="form-group"><label className="form-label">Data</label><input type="date" className="input" value={form.data} onChange={e => setForm(f=>({...f,data:e.target.value}))}/></div>
-                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{COLABS.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{colabs.map(c=><option key={c}>{c}</option>)}</select></div>
                 <div className="form-group col-span-2"><label className="form-label">Assunto</label><input className="input" value={form.assunto} onChange={e => setForm(f=>({...f,assunto:e.target.value}))} placeholder="Ex: Dúvida sobre DAS"/></div>
                 <div className="form-group col-span-2"><label className="form-label">Resumo</label><textarea className="textarea" rows={3} value={form.resumo} onChange={e => setForm(f=>({...f,resumo:e.target.value}))} placeholder="O que foi tratado, decisões, encaminhamentos..."/></div>
                 <div className="form-group col-span-2"><label className="form-label">Próximo passo</label><input className="input" value={form.proximo_passo} onChange={e => setForm(f=>({...f,proximo_passo:e.target.value}))} placeholder="Ex: Enviar documentos até dia 20"/></div>

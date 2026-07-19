@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { buscarColaboradores } from '../lib/colaboradores'
 import { Plus, Wand2, CheckCircle, RefreshCw, Edit2, Trash2, Search, Loader2, X, Save } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -19,9 +20,8 @@ const OBR_CATALOG = [
 
 const TIPOS = ['declaracao','abertura','anual','atendimento','administrativo','outro']
 const TIPO_LABEL = { declaracao: 'Declaração', abertura: 'Abertura', anual: 'Anual', atendimento: 'Atendimento', administrativo: 'Administrativo', outro: 'Outro' }
-const COLABS = ['Carlos','Ana','Pedro','Maria']
 const MES_NOMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const emptyForm = { descricao: '', cliente_nome: '', tipo: 'declaracao', responsavel: 'Carlos', prazo: '', prioridade: 'media', status: 'pendente', obs: '' }
+const emptyForm = { descricao: '', cliente_nome: '', tipo: 'declaracao', responsavel: '', prazo: '', prioridade: 'media', status: 'pendente', obs: '' }
 
 export default function Tarefas() {
   const { profile, isGestor } = useAuth()
@@ -42,8 +42,9 @@ export default function Tarefas() {
   const [genMes, setGenMes] = useState(hoje.getMonth())
   const [genAno, setGenAno] = useState(hoje.getFullYear())
   const [aba, setAba] = useState('lista') // lista | empresa | equipe
+  const [colabs, setColabs] = useState([])
 
-  useEffect(() => { fetchDados() }, [])
+  useEffect(() => { fetchDados(); buscarColaboradores().then(setColabs) }, [])
 
   async function fetchDados() {
     setLoading(true)
@@ -77,7 +78,7 @@ export default function Tarefas() {
         novas.push({
           descricao: `${cat.nome} — ${c.nome} — ${mesLabel}`,
           cliente_nome: c.nome, tipo: cat.tipo,
-          responsavel: o.resp || 'Carlos',
+          responsavel: o.resp || colabs[0] || '',
           prazo: prazoStr, prioridade: 'alta',
           status: prazoStr < hojeStr ? 'atrasada' : 'pendente',
           gerada: true, obr_id: o.id, mes_ref: mesRef
@@ -105,7 +106,7 @@ export default function Tarefas() {
     await supabase.from('tarefas').delete().eq('id', id); fetchDados()
   }
 
-  function abrirNovo() { setForm(emptyForm); setEditId(null); setModalOpen(true) }
+  function abrirNovo() { setForm({ ...emptyForm, responsavel: colabs[0] || '' }); setEditId(null); setModalOpen(true) }
   function abrirEditar(t) {
     setForm({ descricao: t.descricao, cliente_nome: t.cliente_nome || '', tipo: t.tipo, responsavel: t.responsavel, prazo: t.prazo || '', prioridade: t.prioridade, status: t.status === 'atrasada' ? 'pendente' : t.status, obs: t.obs || '' })
     setEditId(t.id); setModalOpen(true)
@@ -189,7 +190,7 @@ export default function Tarefas() {
           </select>
           {isGestor && <select className="select w-auto" value={filtroResp} onChange={e => setFiltroResp(e.target.value)}>
             <option value="">Todos</option>
-            {COLABS.map(c => <option key={c}>{c}</option>)}
+            {colabs.map(c => <option key={c}>{c}</option>)}
           </select>}
         </div>
 
@@ -270,7 +271,7 @@ export default function Tarefas() {
 
       {aba === 'equipe' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {(isGestor ? COLABS : [profile?.nome]).filter(Boolean).map(colab => {
+          {(isGestor ? colabs : [profile?.nome]).filter(Boolean).map(colab => {
             const minhas = tarefas.filter(t => t.responsavel === colab && t.status !== 'concluida')
             const atr = minhas.filter(t => t.status === 'atrasada').length
             return (
@@ -340,7 +341,7 @@ export default function Tarefas() {
                 <div className="form-group col-span-2"><label className="form-label">Descrição *</label><input className="input" value={form.descricao} onChange={e => setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: DAS — Empresa X — Maio/2026"/></div>
                 <div className="form-group"><label className="form-label">Cliente</label><input className="input" list="dl-clientes-t" value={form.cliente_nome} onChange={e => setForm(f=>({...f,cliente_nome:e.target.value}))} placeholder="Nome do cliente"/><datalist id="dl-clientes-t">{clientes.map(c=><option key={c.id} value={c.nome}/>)}</datalist></div>
                 <div className="form-group"><label className="form-label">Tipo</label><select className="select" value={form.tipo} onChange={e => setForm(f=>({...f,tipo:e.target.value}))}>{TIPOS.map(t=><option key={t} value={t}>{TIPO_LABEL[t]}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{COLABS.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{colabs.map(c=><option key={c}>{c}</option>)}</select></div>
                 <div className="form-group"><label className="form-label">Prazo</label><input type="date" className="input" value={form.prazo} onChange={e => setForm(f=>({...f,prazo:e.target.value}))}/></div>
                 <div className="form-group"><label className="form-label">Prioridade</label><select className="select" value={form.prioridade} onChange={e => setForm(f=>({...f,prioridade:e.target.value}))}><option value="alta">🔴 Alta</option><option value="media">🟡 Média</option><option value="baixa">⚪ Baixa</option></select></div>
                 <div className="form-group"><label className="form-label">Status</label><select className="select" value={form.status} onChange={e => setForm(f=>({...f,status:e.target.value}))}><option value="pendente">Pendente</option><option value="andamento">Em andamento</option><option value="concluida">Concluída</option></select></div>

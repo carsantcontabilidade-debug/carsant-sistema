@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { buscarColaboradores } from '../lib/colaboradores'
 import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck } from 'lucide-react'
 
 const OBR_CATALOG = [
@@ -21,7 +22,6 @@ const OBR_CATALOG = [
 ]
 
 const REGIMES = ['MEI','Simples Nacional','Lucro Presumido','Lucro Real','Entidade / Assoc.','Partido Político']
-const COLABS = ['Carlos','Ana','Pedro','Maria']
 
 const emptyForm = {
   nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
@@ -41,8 +41,9 @@ export default function Clientes() {
   const [obrSel, setObrSel] = useState({}) // {obrId: {sel: bool, resp: string}}
   const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
+  const [colabs, setColabs] = useState([])
 
-  useEffect(() => { fetchClientes() }, [])
+  useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
 
   async function fetchClientes() {
     setLoading(true)
@@ -63,7 +64,7 @@ export default function Clientes() {
       tipo: c.tipo || 'recorrente', obrigacoes: c.obrigacoes || []
     })
     const sel = {}
-    ;(c.obrigacoes || []).forEach(o => { sel[o.id] = { sel: true, resp: o.resp || 'Carlos' } })
+    ;(c.obrigacoes || []).forEach(o => { sel[o.id] = { sel: true, resp: o.resp || colabs[0] || '' } })
     setObrSel(sel)
     setEditId(c.id)
     setModalOpen(true)
@@ -104,7 +105,7 @@ export default function Clientes() {
     const novo = { ...obrSel }
     OBR_CATALOG.forEach(o => {
       if (o.regimes.includes(regime) && !novo[o.id]) {
-        novo[o.id] = { sel: true, resp: 'Ana' }
+        novo[o.id] = { sel: true, resp: colabs[0] || '' }
       }
     })
     setObrSel(novo)
@@ -113,7 +114,7 @@ export default function Clientes() {
   function toggleObr(id) {
     setObrSel(prev => ({
       ...prev,
-      [id]: { sel: !prev[id]?.sel, resp: prev[id]?.resp || 'Carlos' }
+      [id]: { sel: !prev[id]?.sel, resp: prev[id]?.resp || colabs[0] || '' }
     }))
   }
 
@@ -348,7 +349,7 @@ export default function Clientes() {
                 <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
                   {OBR_CATALOG.map(o => {
                     const sel = obrSel[o.id]?.sel || false
-                    const resp = obrSel[o.id]?.resp || 'Carlos'
+                    const resp = obrSel[o.id]?.resp || colabs[0] || ''
                     return (
                       <div key={o.id} className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${sel ? 'bg-brand-50 border-brand-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
                         <input type="checkbox" checked={sel} onChange={() => toggleObr(o.id)} className="w-4 h-4 accent-brand-600 flex-shrink-0" />
@@ -358,7 +359,7 @@ export default function Clientes() {
                         </div>
                         {sel && (
                           <select className="text-xs border border-gray-300 rounded px-1 py-0.5 w-16 flex-shrink-0" value={resp} onChange={e => { e.stopPropagation(); setObrResp(o.id, e.target.value) }}>
-                            {COLABS.map(c => <option key={c}>{c}</option>)}
+                            {colabs.map(c => <option key={c}>{c}</option>)}
                           </select>
                         )}
                       </div>

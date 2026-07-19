@@ -7,12 +7,12 @@ import {
   getGoogleAuthUrl, buscarToken, removerToken,
   criarEventoGoogle, atualizarEventoGoogle, deletarEventoGoogle, buscarEventosGoogle
 } from '../lib/googleCalendar'
+import { buscarColaboradores } from '../lib/colaboradores'
 
 const TIPOS = ['reuniao','prazo','visita','outro']
 const TIPO_LABEL = { reuniao: 'Reunião', prazo: 'Prazo fiscal', visita: 'Visita', outro: 'Outro' }
 const TIPO_COLOR = { reuniao: 'bg-blue-100 text-blue-700', prazo: 'bg-red-100 text-red-700', visita: 'bg-yellow-100 text-yellow-700', outro: 'bg-gray-100 text-gray-600' }
-const COLABS = ["Ronaldo", "Karine", "Bruno", "Cíntia"]
-const emptyForm = { titulo: '', data: format(new Date(), 'yyyy-MM-dd'), hora: '', tipo: 'reuniao', cliente_nome: '', responsavel: 'Ronaldo', obs: '' }
+const emptyForm = { titulo: '', data: format(new Date(), 'yyyy-MM-dd'), hora: '', tipo: 'reuniao', cliente_nome: '', responsavel: '', obs: '' }
 
 export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -28,10 +28,12 @@ export default function Agenda() {
   const [googleConectado, setGoogleConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [syncMsg, setSyncMsg] = useState(null)
+  const [colabs, setColabs] = useState([])
 
   useEffect(() => {
     fetchDados()
     verificarGoogle()
+    buscarColaboradores().then(setColabs)
     // Checar callback OAuth
     const url = new URL(window.location.href)
     const code = url.searchParams.get('code')
@@ -109,7 +111,7 @@ export default function Agenda() {
             tipo: 'outro',
             obs: ge.description || '',
             google_event_id: ge.id,
-            responsavel: 'Ronaldo'
+            responsavel: null
           })
           importados++
         }
@@ -125,7 +127,7 @@ export default function Agenda() {
   }
 
   function abrirNovo(data = null) {
-    setForm({ ...emptyForm, data: data || format(new Date(), 'yyyy-MM-dd') })
+    setForm({ ...emptyForm, data: data || format(new Date(), 'yyyy-MM-dd'), responsavel: colabs[0] || '' })
     setEditId(null)
     setEditGoogleId(null)
     setModalOpen(true)
@@ -354,7 +356,7 @@ export default function Agenda() {
                 <div className="form-group"><label className="form-label">Data</label><input type="date" className="input" value={form.data} onChange={e => setForm(f=>({...f,data:e.target.value}))}/></div>
                 <div className="form-group"><label className="form-label">Horário</label><input type="time" className="input" value={form.hora} onChange={e => setForm(f=>({...f,hora:e.target.value}))}/></div>
                 <div className="form-group"><label className="form-label">Tipo</label><select className="select" value={form.tipo} onChange={e => setForm(f=>({...f,tipo:e.target.value}))}>{TIPOS.map(t=><option key={t} value={t}>{TIPO_LABEL[t]}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{COLABS.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Responsável</label><select className="select" value={form.responsavel} onChange={e => setForm(f=>({...f,responsavel:e.target.value}))}>{colabs.map(c=><option key={c}>{c}</option>)}</select></div>
                 <div className="form-group"><label className="form-label">Cliente</label><input className="input" list="dl-ev" value={form.cliente_nome} onChange={e => setForm(f=>({...f,cliente_nome:e.target.value}))} placeholder="Vincular a um cliente"/><datalist id="dl-ev">{clientes.map(c=><option key={c.id} value={c.nome}/>)}</datalist></div>
                 <div className="form-group"><label className="form-label">Observação</label><input className="input" value={form.obs} onChange={e => setForm(f=>({...f,obs:e.target.value}))}/></div>
               </div>
