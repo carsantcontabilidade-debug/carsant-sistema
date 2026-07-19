@@ -181,7 +181,7 @@ export default function Cobrancas() {
     const resultado = await chamarEdgeFunction("criar_cobranca", payloadInter);
 
     // 3. Atualizar banco com dados do Inter
-    await supabase.from("cobrancas").update({
+    const { error: errAtualizar } = await supabase.from("cobrancas").update({
       status: "gerada",
       codigo_solicitacao: resultado.codigoSolicitacao,
       nosso_numero: resultado.nossoNumero,
@@ -189,6 +189,13 @@ export default function Cobrancas() {
       linha_digitavel: resultado.linhaDigitavel,
       pix_copia_cola: resultado.pixCopiaECola,
     }).eq("id", cobSalva.id);
+    if (errAtualizar) {
+      // O boleto JÁ foi gerado de verdade no Inter (codigoSolicitacao existe) —
+      // registra isso com destaque, para não gerar um segundo por engano.
+      throw new Error(
+        `Boleto gerado no Inter (código ${resultado.codigoSolicitacao}), mas falhou ao salvar no sistema: ${errAtualizar.message}. Não gere de novo — atualize o status manualmente ou contate o suporte.`
+      );
+    }
 
     return {
       ...cobSalva,
@@ -326,13 +333,14 @@ export default function Cobrancas() {
         : resultado.situacao === "CANCELADO" ? "cancelada"
         : resultado.situacao === "VENCIDO" ? "vencida"
         : "gerada";
-      await supabase.from("cobrancas").update({
+      const { error: errAtualizar } = await supabase.from("cobrancas").update({
         status: novoStatus,
         paga_em: resultado.situacao === "PAGO" ? new Date().toISOString() : null,
         codigo_barras: resultado.codigoBarras || cobranca.codigo_barras,
         linha_digitavel: resultado.linhaDigitavel || cobranca.linha_digitavel,
         pix_copia_cola: resultado.pixCopiaECola || cobranca.pix_copia_cola,
       }).eq("id", cobranca.id);
+      if (errAtualizar) throw new Error(errAtualizar.message);
       carregarCobrancas();
       setSucesso("Status atualizado!");
     } catch (e) {
@@ -349,11 +357,14 @@ export default function Cobrancas() {
         codigoSolicitacao: cobranca.codigo_solicitacao,
         motivo: "ACERTOS",
       });
-      await supabase.from("cobrancas").update({
+      const { error: errAtualizar } = await supabase.from("cobrancas").update({
         status: "cancelada",
         cancelada_em: new Date().toISOString(),
         motivo_cancelamento: "Cancelado pelo escritório",
       }).eq("id", cobranca.id);
+      if (errAtualizar) {
+        throw new Error(`Cancelado no Inter, mas falhou ao atualizar o sistema: ${errAtualizar.message}`);
+      }
       setModalAberto(false);
       carregarCobrancas();
       setSucesso("Cobrança cancelada.");
@@ -409,7 +420,12 @@ export default function Cobrancas() {
     const { data } = supabase.storage.from("boletos").getPublicUrl(caminho);
     const url = data?.publicUrl;
     if (url) {
-      await supabase.from("cobrancas").update({ link_boleto: url }).eq("id", cob.id);
+      const { error: errSalvarLink } = await supabase.from("cobrancas").update({ link_boleto: url }).eq("id", cob.id);
+      if (errSalvarLink) {
+        // Não bloqueia o envio (a URL já foi gerada e é válida) — só não fica
+        // em cache para a próxima vez, gerando novo upload então.
+        console.warn("Não foi possível salvar o link do boleto em cache:", errSalvarLink.message);
+      }
     }
     return url || null;
   }
