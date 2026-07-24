@@ -121,7 +121,18 @@ export default function NfseEmitir() {
           </div>
         </div>
 
-        {erro && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm whitespace-pre-wrap">{erro}</div>}
+        {erro && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+            <div className="whitespace-pre-wrap break-words">{erro}</div>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(erro)}
+              className="mt-2 text-xs font-medium text-red-800 underline"
+            >
+              Copiar erro completo
+            </button>
+          </div>
+        )}
 
         <button type="submit" disabled={enviando} className="btn-primary gap-2">
           {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
