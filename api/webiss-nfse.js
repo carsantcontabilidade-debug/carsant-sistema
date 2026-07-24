@@ -87,14 +87,19 @@ export function montarInfDeclaracaoDps(dados) {
 
   const tomadorXml = dados.tomador ? montarTomadorXml(dados.tomador) : '';
 
-  return `<InfDeclaracaoPrestacaoServico Id="${idTag}">` +
+  // O namespace precisa estar explícito aqui (não só herdado de um elemento
+  // pai mais externo) porque a assinatura digital é calculada sobre este
+  // fragmento isoladamente — se o namespace só existir por herança quando o
+  // fragmento for embutido no envelope depois, o C14N na hora de assinar e
+  // na hora de validar produzem bytes diferentes e a assinatura não bate.
+  return `<InfDeclaracaoPrestacaoServico xmlns="http://www.abrasf.org.br/nfse.xsd" Id="${idTag}">` +
     `<Rps>` +
       `<IdentificacaoRps>` +
         `<Numero>${dados.rpsNumero}</Numero>` +
         `<Serie>${escapeXml(dados.rpsSerie || '1')}</Serie>` +
         `<Tipo>${dados.rpsTipo || 1}</Tipo>` +
       `</IdentificacaoRps>` +
-      `<DataEmissao>${formatarCompetencia(dados.dataEmissaoRps || new Date())}</DataEmissao>` +
+      `<DataEmissao>${formatarData(dados.dataEmissaoRps || new Date())}</DataEmissao>` +
       `<Status>1</Status>` +
     `</Rps>` +
     `<Competencia>${formatarData(dados.competencia || new Date())}</Competencia>` +
@@ -153,6 +158,12 @@ function montarTomadorXml(tomador) {
 //
 // certPem/keyPem: certificado A1 (.pfx) já convertido para PEM, vindos de
 // variável de ambiente na Vercel (mesmo padrão do WEBISS_CERT_PEM / WEBISS_KEY_PEM).
+//
+// O tipo tcDeclaracaoPrestacaoServico do XSD do WebISS define Rps como
+// InfDeclaracaoPrestacaoServico seguido de Signature como elementos IRMÃOS
+// (não a Signature aninhada dentro do InfDeclaracaoPrestacaoServico) — por
+// isso o wrapper <Rps> é montado aqui, antes de assinar, com action:'after'
+// para a assinatura ser inserida depois do InfDeclaracaoPrestacaoServico.
 export function assinarInfDeclaracao(infDeclaracaoXml, idTag, { certPem, keyPem }) {
   const sig = new SignedXml({
     privateKey: keyPem,
@@ -171,18 +182,19 @@ export function assinarInfDeclaracao(infDeclaracaoXml, idTag, { certPem, keyPem 
     ],
   });
 
-  sig.computeSignature(infDeclaracaoXml, {
-    location: { reference: `//*[@Id='${idTag}']`, action: 'append' },
+  const rpsXml = `<Rps>${infDeclaracaoXml}</Rps>`;
+
+  sig.computeSignature(rpsXml, {
+    location: { reference: `//*[@Id='${idTag}']`, action: 'after' },
   });
 
   return sig.getSignedXml();
 }
 
 // ─── Envelope GerarNfseEnvio (emissão síncrona, uma NFS-e por vez) ─────────
+// dpsAssinadaXml já vem envelopado em <Rps>...</Rps> por assinarInfDeclaracao.
 export function montarGerarNfseEnvio(dpsAssinadaXml) {
-  return `<GerarNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">` +
-    `<Rps>${dpsAssinadaXml}</Rps>` +
-  `</GerarNfseEnvio>`;
+  return `<GerarNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">${dpsAssinadaXml}</GerarNfseEnvio>`;
 }
 
 // Monta a DPS completa (dados + assinatura), pronta para envio.
