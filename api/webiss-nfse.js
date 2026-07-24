@@ -263,7 +263,7 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           return reject(new Error(`WebISS retornou HTTP ${res.statusCode}: ${raw.slice(0, 500)}`));
         }
-        const match = raw.match(/<outputXML>([\s\S]*?)<\/outputXML>/);
+        const match = raw.match(/<outputXML[^>]*>([\s\S]*?)<\/outputXML>/);
         if (!match) {
           return reject(new Error(`Resposta do WebISS sem outputXML: ${raw.slice(0, 500)}`));
         }
