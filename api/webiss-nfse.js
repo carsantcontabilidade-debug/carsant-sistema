@@ -13,15 +13,17 @@ const CARSANT = {
   cnpj: process.env.CARSANT_CNPJ || 'TODO_CNPJ_SOMENTE_NUMEROS',
   inscricaoMunicipal: process.env.CARSANT_INSCRICAO_MUNICIPAL || 'TODO_INSCRICAO_MUNICIPAL',
   codigoMunicipioIbge: '2910800', // Feira de Santana - BA (tabela IBGE)
+  codigoCnae: '6920601', // Atividades de contabilidade (confirmado em NFS-e real da CARSANT)
   optanteSimplesNacional: 1, // 1-Sim, confirmado por Ronaldo
   incentivoFiscal: 2, // 1-Sim, 2-Não
   regimeEspecialTributacao: 6, // 6-ME/EPP (Simples Nacional, CARSANT é LTDA, não MEI)
 };
 
 // Códigos de serviço (LC 116/2003) mapeados por atividade da CARSANT.
-// O item 1701 é o principal, usado para honorários contábeis.
+// 1719 é o item usado de fato pela CARSANT (confirmado em NFS-e real já
+// emitida), não 1701 como assumido antes.
 export const ITENS_LISTA_SERVICO = {
-  CONTABILIDADE: '1701', // Serviços de contabilidade, auditoria, revisão de contas, perícia...
+  CONTABILIDADE: '1719', // Confirmado em NFS-e real da CARSANT (Assessoria e Consultoria Contábil)
   CONSULTORIA: '1705', // Assessoria ou consultoria de qualquer natureza
   PESQUISA_MERCADO: '1706', // Organização, planejamento, assessoria, consultoria e pesquisas de mercado
   APOIO_ADMINISTRATIVO: '1705',
@@ -112,9 +114,12 @@ export function montarInfDeclaracaoDps(dados) {
       `</Valores>` +
       `<IssRetido>${dados.issRetido || 2}</IssRetido>` +
       `<ItemListaServico>${dados.itemListaServico || ITENS_LISTA_SERVICO.CONTABILIDADE}</ItemListaServico>` +
+      `<CodigoCnae>${dados.codigoCnae || CARSANT.codigoCnae}</CodigoCnae>` +
+      `<CodigoTributacaoMunicipio>${dados.itemListaServico || ITENS_LISTA_SERVICO.CONTABILIDADE}</CodigoTributacaoMunicipio>` +
       `<Discriminacao>${escapeXml(dados.discriminacao)}</Discriminacao>` +
       `<CodigoMunicipio>${CARSANT.codigoMunicipioIbge}</CodigoMunicipio>` +
       `<ExigibilidadeISS>1</ExigibilidadeISS>` +
+      `<MunicipioIncidencia>${CARSANT.codigoMunicipioIbge}</MunicipioIncidencia>` +
     `</Servico>` +
     `<Prestador>` +
       `<CpfCnpj><Cnpj>${CARSANT.cnpj}</Cnpj></CpfCnpj>` +

@@ -8,7 +8,7 @@ const emptyForm = {
   rpsSerie: '1',
   competencia: new Date().toISOString().slice(0, 10),
   valorServicos: '',
-  itemListaServico: '1701',
+  itemListaServico: '1719',
   discriminacao: '',
   tomadorNome: '',
   tomadorCnpj: '',
