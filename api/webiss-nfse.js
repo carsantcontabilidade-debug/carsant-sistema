@@ -277,10 +277,10 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
 
   const erro = outputXml.match(/<ListaMensagemRetorno[\s\S]*?<\/ListaMensagemRetorno>/);
   if (erro) {
-    const codigos = [...outputXml.matchAll(/<Codigo>(.*?)<\/Codigo>/g)].map((m) => m[1]);
-    const mensagens = [...outputXml.matchAll(/<Mensagem>(.*?)<\/Mensagem>/g)].map((m) => m[1]);
+    const codigos = [...outputXml.matchAll(/<Codigo>([\s\S]*?)<\/Codigo>/g)].map((m) => m[1]);
+    const mensagens = [...outputXml.matchAll(/<Mensagem>([\s\S]*?)<\/Mensagem>/g)].map((m) => m[1]);
     const detalhes = mensagens.map((m, i) => `[${codigos[i] || '?'}] ${m}`).join('; ');
-    throw new Error(`WebISS recusou a emissão: ${detalhes || outputXml}`);
+    throw new Error(`WebISS recusou a emissão: ${detalhes || '(sem detalhes)'}\n\n--- XML COMPLETO DA RESPOSTA ---\n${outputXml}`);
   }
 
   return outputXml;
