@@ -13,6 +13,10 @@ const emptyForm = {
   tomadorNome: '',
   tomadorCnpj: '',
   tomadorEmail: '',
+  tomadorLogradouro: 'Avenida Getúlio Vargas',
+  tomadorNumero: '2761',
+  tomadorBairro: 'Santa Mônica',
+  tomadorCep: '44001525',
 }
 
 export default function NfseEmitir() {
@@ -59,6 +63,15 @@ export default function NfseEmitir() {
               razaoSocial: form.tomadorNome || undefined,
               cnpj: cnpjLimpo || undefined,
               email: form.tomadorEmail || undefined,
+              endereco: {
+                logradouro: form.tomadorLogradouro,
+                numero: form.tomadorNumero,
+                bairro: form.tomadorBairro,
+                cep: form.tomadorCep.replace(/\D/g, ''),
+                uf: 'BA',
+                codigoMunicipioIbge: '2910800',
+                codigoPais: '1058',
+              },
             },
           },
         }),
@@ -130,6 +143,25 @@ export default function NfseEmitir() {
             <div className="form-group col-span-2">
               <label className="form-label">E-mail (seu, para teste)</label>
               <input type="email" className="input" value={form.tomadorEmail} onChange={e => setForm(f => ({ ...f, tomadorEmail: e.target.value }))} />
+            </div>
+            <div className="form-group col-span-2">
+              <label className="form-label">Logradouro</label>
+              <input className="input" value={form.tomadorLogradouro} onChange={e => setForm(f => ({ ...f, tomadorLogradouro: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Número</label>
+              <input className="input" value={form.tomadorNumero} onChange={e => setForm(f => ({ ...f, tomadorNumero: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Bairro</label>
+              <input className="input" value={form.tomadorBairro} onChange={e => setForm(f => ({ ...f, tomadorBairro: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">CEP</label>
+              <input className="input" value={form.tomadorCep} onChange={e => setForm(f => ({ ...f, tomadorCep: e.target.value }))} />
+            </div>
+            <div className="form-group flex items-end">
+              <p className="text-xs text-gray-500">Cidade/UF/País fixos em Feira de Santana/BA/Brasil para este teste.</p>
             </div>
           </div>
         </div>

@@ -147,6 +147,7 @@ function montarTomadorXml(tomador) {
       `<Bairro>${escapeXml(tomador.endereco.bairro)}</Bairro>` +
       `<CodigoMunicipio>${tomador.endereco.codigoMunicipioIbge}</CodigoMunicipio>` +
       `<Uf>${escapeXml(tomador.endereco.uf)}</Uf>` +
+      `<CodigoPais>${tomador.endereco.codigoPais || '1058'}</CodigoPais>` +
       `<Cep>${tomador.endereco.cep}</Cep>` +
     `</Endereco>`
   ) : '';
