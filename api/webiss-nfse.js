@@ -15,6 +15,7 @@ const CARSANT = {
   codigoMunicipioIbge: '2910800', // Feira de Santana - BA (tabela IBGE)
   optanteSimplesNacional: 1, // 1-Sim, confirmado por Ronaldo
   incentivoFiscal: 2, // 1-Sim, 2-Não
+  regimeEspecialTributacao: 6, // 6-ME/EPP (Simples Nacional, CARSANT é LTDA, não MEI)
 };
 
 // Códigos de serviço (LC 116/2003) mapeados por atividade da CARSANT.
@@ -120,6 +121,7 @@ export function montarInfDeclaracaoDps(dados) {
       `<InscricaoMunicipal>${CARSANT.inscricaoMunicipal}</InscricaoMunicipal>` +
     `</Prestador>` +
     tomadorXml +
+    (CARSANT.regimeEspecialTributacao ? `<RegimeEspecialTributacao>${CARSANT.regimeEspecialTributacao}</RegimeEspecialTributacao>` : '') +
     `<OptanteSimplesNacional>${CARSANT.optanteSimplesNacional}</OptanteSimplesNacional>` +
     `<IncentivoFiscal>${CARSANT.incentivoFiscal}</IncentivoFiscal>` +
   `</InfDeclaracaoPrestacaoServico>`;
