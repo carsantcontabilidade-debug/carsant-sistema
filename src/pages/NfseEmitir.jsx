@@ -28,9 +28,16 @@ export default function NfseEmitir() {
 
   async function emitir(e) {
     e.preventDefault()
-    setEnviando(true)
     setErro('')
     setResultado(null)
+
+    const cnpjLimpo = form.tomadorCnpj.replace(/\D/g, '')
+    if (cnpjLimpo && cnpjLimpo.length !== 14) {
+      setErro(`O CNPJ do tomador precisa ter exatamente 14 dígitos (tem ${cnpjLimpo.length}). O WebISS exige esse tamanho exato — evite gastar tentativas testando um valor errado.`)
+      return
+    }
+
+    setEnviando(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const resp = await fetch('/api/nfse-emitir', {
@@ -50,7 +57,7 @@ export default function NfseEmitir() {
             discriminacao: form.discriminacao,
             tomador: {
               razaoSocial: form.tomadorNome || undefined,
-              cnpj: form.tomadorCnpj ? form.tomadorCnpj.replace(/\D/g, '') : undefined,
+              cnpj: cnpjLimpo || undefined,
               email: form.tomadorEmail || undefined,
             },
           },
@@ -112,7 +119,13 @@ export default function NfseEmitir() {
             </div>
             <div className="form-group">
               <label className="form-label">CNPJ (fictício)</label>
-              <input className="input" value={form.tomadorCnpj} onChange={e => setForm(f => ({ ...f, tomadorCnpj: e.target.value }))} placeholder="00000000000000" />
+              <input
+                className="input"
+                value={form.tomadorCnpj}
+                onChange={e => setForm(f => ({ ...f, tomadorCnpj: e.target.value.replace(/\D/g, '').slice(0, 14) }))}
+                placeholder="11222333000181 (14 dígitos)"
+                maxLength={14}
+              />
             </div>
             <div className="form-group col-span-2">
               <label className="form-label">E-mail (seu, para teste)</label>
