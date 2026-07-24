@@ -233,10 +233,10 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">` +
       `<soap:Body>` +
-        `<GerarNfse xmlns="http://nfse.abrasf.org.br">` +
-          `<nfseCabecMsg>${escapeXml(montarCabecalho())}</nfseCabecMsg>` +
-          `<nfseDadosMsg>${escapeXml(envelopeXml)}</nfseDadosMsg>` +
-        `</GerarNfse>` +
+        `<GerarNfseRequest xmlns="http://nfse.abrasf.org.br">` +
+          `<nfseCabecMsg xmlns="">${escapeXml(montarCabecalho())}</nfseCabecMsg>` +
+          `<nfseDadosMsg xmlns="">${escapeXml(envelopeXml)}</nfseDadosMsg>` +
+        `</GerarNfseRequest>` +
       `</soap:Body>` +
     `</soap:Envelope>`;
 
