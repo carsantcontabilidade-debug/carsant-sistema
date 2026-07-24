@@ -171,16 +171,15 @@ export function assinarInfDeclaracao(infDeclaracaoXml, idTag, { certPem, keyPem 
     privateKey: keyPem,
     publicCert: certPem,
     canonicalizationAlgorithm: 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
-    // Manual documenta SHA-1, mas é uma tentativa experimental usar SHA-256
-    // aqui: a doc é de uma versão (V5.0/IBSCBS) muito recente e pode não ter
-    // sido atualizada nessa parte específica em relação à implementação real.
-    signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+    // Confirmado via XML de uma NFS-e real já emitida pela CARSANT
+    // (assinatura da tag <Signature> da resposta): SHA-1 mesmo, não SHA-256.
+    signatureAlgorithm: 'http://www.w3.org/2000/09/xmldsig#rsa-sha1',
   });
 
   sig.addReference({
     xpath: `//*[@Id='${idTag}']`,
     uri: `#${idTag}`,
-    digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
+    digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
     // Ordem importa: enveloped-signature (remove o próprio <Signature> do
     // cálculo) precisa vir antes do c14n (canonicaliza o que sobrou) — na
     // ordem inversa a assinatura seria calculada sobre bytes já serializados,
