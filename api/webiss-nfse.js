@@ -178,9 +178,13 @@ export function assinarInfDeclaracao(infDeclaracaoXml, idTag, { certPem, keyPem 
     xpath: `//*[@Id='${idTag}']`,
     uri: `#${idTag}`,
     digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
+    // Ordem importa: enveloped-signature (remove o próprio <Signature> do
+    // cálculo) precisa vir antes do c14n (canonicaliza o que sobrou) — na
+    // ordem inversa a assinatura seria calculada sobre bytes já serializados,
+    // sem sentido para uma transform que opera removendo nós do XML.
     transforms: [
-      'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
       'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+      'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
     ],
   });
 
