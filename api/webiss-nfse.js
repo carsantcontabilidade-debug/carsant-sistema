@@ -60,15 +60,11 @@ function formatarValor(v) {
   return Number(v).toFixed(2);
 }
 
-function formatarCompetencia(date = new Date()) {
-  // DataEmissao (Rps) é dateTime (AAAA-MM-DDTHH:mm:ss)
-  return date.toISOString().replace(/\.\d{3}Z$/, '');
-}
-
 function formatarData(date = new Date()) {
-  // Competencia é xsd:date (AAAA-MM-DD) no schema pós-Reforma (v2.02 IBSCBS),
-  // diferente de DataEmissao que continua dateTime.
-  return date.toISOString().slice(0, 10);
+  // Usa o fuso de Brasília explicitamente: toISOString() é sempre UTC, e o
+  // servidor (Vercel) roda em UTC — perto da meia-noite BRT, a data em UTC já
+  // vira o dia seguinte, fazendo o WebISS rejeitar como "emissão no futuro".
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
 // ─── Montagem da DPS (InfDeclaracaoPrestacaoServico) ───────────────────────
