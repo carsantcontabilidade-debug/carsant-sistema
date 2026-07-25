@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { pushSuportado, inscreverPush } from '../../lib/push'
 
 export default function PortalHome() {
-  const { cliente } = usePortalAuth()
+  const { cliente, contadores } = usePortalAuth()
   const [notifStatus, setNotifStatus] = useState('indisponivel') // indisponivel | pedir | ativo | negado
   const [ativando, setAtivando] = useState(false)
 
@@ -42,9 +42,9 @@ export default function PortalHome() {
   }
 
   const atalhos = [
-    { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças', desc: 'Veja seu status de pagamento e cobranças em aberto' },
-    { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos', desc: 'Envie notas fiscais e baixe guias, folha e relatórios' },
-    { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação', desc: 'Veja o histórico de mensagens com o escritório' },
+    { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças', desc: 'Veja seu status de pagamento e cobranças em aberto', secao: 'honorarios' },
+    { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos', desc: 'Envie notas fiscais e baixe guias, folha e relatórios', secao: 'documentos' },
+    { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação', desc: 'Veja o histórico de mensagens com o escritório', secao: 'comunicacao' },
   ]
 
   return (
@@ -70,13 +70,21 @@ export default function PortalHome() {
       )}
 
       <div className="grid sm:grid-cols-3 gap-4">
-        {atalhos.map(a => (
-          <Link key={a.to} to={a.to} className="card p-5 hover:shadow-md transition-shadow">
-            <a.icon className="w-6 h-6 text-brand-600 mb-3" />
-            <div className="font-semibold text-gray-900 mb-1">{a.label}</div>
-            <div className="text-sm text-gray-500">{a.desc}</div>
-          </Link>
-        ))}
+        {atalhos.map(a => {
+          const contador = contadores[a.secao]
+          return (
+            <Link key={a.to} to={a.to} className="card p-5 hover:shadow-md transition-shadow relative">
+              {contador > 0 && (
+                <span className="absolute top-3 right-3 bg-red-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1">
+                  {contador > 99 ? '99+' : contador}
+                </span>
+              )}
+              <a.icon className="w-6 h-6 text-brand-600 mb-3" />
+              <div className="font-semibold text-gray-900 mb-1">{a.label}</div>
+              <div className="text-sm text-gray-500">{a.desc}</div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )
