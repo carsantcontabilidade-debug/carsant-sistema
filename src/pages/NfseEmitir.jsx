@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Loader2, FileText, AlertTriangle, Search } from 'lucide-react'
 
 const emptyForm = {
-  rpsNumero: '1',
+  rpsNumero: '', // vazio = numerado automaticamente pelo backend
   rpsSerie: '1',
   competencia: new Date().toISOString().slice(0, 10),
   valorServicos: '',
@@ -94,6 +94,10 @@ export default function NfseEmitir() {
       setErro(`O CNPJ do tomador precisa ter exatamente 14 dígitos (tem ${cnpjLimpo.length}). O WebISS exige esse tamanho exato — evite gastar tentativas testando um valor errado.`)
       return
     }
+    if (form.discriminacao.trim().length < 10) {
+      setErro('A discriminação do serviço precisa ter pelo menos 10 caracteres.')
+      return
+    }
 
     setEnviando(true)
     try {
@@ -107,7 +111,7 @@ export default function NfseEmitir() {
         body: JSON.stringify({
           ambiente: 'homologacao',
           dados: {
-            rpsNumero: form.rpsNumero,
+            rpsNumero: form.rpsNumero || undefined,
             rpsSerie: form.rpsSerie,
             competencia: form.competencia,
             valorServicos: parseFloat(form.valorServicos) || 0,
@@ -156,8 +160,8 @@ export default function NfseEmitir() {
       <form onSubmit={emitir} className="card p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="form-group">
-            <label className="form-label">Número do RPS</label>
-            <input className="input" value={form.rpsNumero} onChange={e => setForm(f => ({ ...f, rpsNumero: e.target.value }))} />
+            <label className="form-label">Número do RPS (vazio = automático)</label>
+            <input className="input" value={form.rpsNumero} onChange={e => setForm(f => ({ ...f, rpsNumero: e.target.value }))} placeholder="automático" />
           </div>
           <div className="form-group">
             <label className="form-label">Série</label>
@@ -246,8 +250,17 @@ export default function NfseEmitir() {
 
       {resultado && (
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-green-700 mb-3">✅ Resposta do WebISS ({resultado.ambiente})</h3>
-          <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap">{resultado.resultadoXml}</pre>
+          <h3 className="text-sm font-semibold text-green-700 mb-3">✅ NFS-e emitida ({resultado.ambiente})</h3>
+          {resultado.numero && (
+            <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+              <div><span className="text-gray-500">Número:</span> <strong>{resultado.numero}</strong></div>
+              <div><span className="text-gray-500">Código de verificação:</span> <strong>{resultado.codigoVerificacao}</strong></div>
+            </div>
+          )}
+          <details>
+            <summary className="text-xs text-gray-500 cursor-pointer">Ver XML completo da resposta</summary>
+            <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap mt-2">{resultado.resultadoXml}</pre>
+          </details>
         </div>
       )}
 

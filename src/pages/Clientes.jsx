@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
-import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature } from 'lucide-react'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, regimes: ['MEI'] },
@@ -25,7 +25,9 @@ const REGIMES = ['MEI','Simples Nacional','Lucro Presumido','Lucro Real','Entida
 
 const emptyForm = {
   nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
-  telefone: '', email: '', email2: '', tipo: 'recorrente', obrigacoes: []
+  telefone: '', email: '', email2: '', tipo: 'recorrente', obrigacoes: [],
+  logradouro: '', numero_endereco: '', complemento: '', bairro: '', cep: '',
+  uf: 'BA', codigo_municipio_ibge: '2910800',
 }
 
 export default function Clientes() {
@@ -40,6 +42,7 @@ export default function Clientes() {
   const [saving, setSaving] = useState(false)
   const [obrSel, setObrSel] = useState({}) // {obrId: {sel: bool, resp: string}}
   const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
+  const [emitindoNfse, setEmitindoNfse] = useState(null) // id do cliente com NFS-e em emissão
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
   const [colabs, setColabs] = useState([])
 
@@ -61,7 +64,10 @@ export default function Clientes() {
       nome: c.nome || '', cnpj: c.cnpj || '', regime: c.regime || '',
       valor_honorario: c.valor_honorario || '', dia_vencimento: c.dia_vencimento || 10,
       telefone: c.telefone || '', email: c.email || '', email2: c.email2 || '',
-      tipo: c.tipo || 'recorrente', obrigacoes: c.obrigacoes || []
+      tipo: c.tipo || 'recorrente', obrigacoes: c.obrigacoes || [],
+      logradouro: c.logradouro || '', numero_endereco: c.numero_endereco || '',
+      complemento: c.complemento || '', bairro: c.bairro || '', cep: c.cep || '',
+      uf: c.uf || 'BA', codigo_municipio_ibge: c.codigo_municipio_ibge || '2910800',
     })
     const sel = {}
     ;(c.obrigacoes || []).forEach(o => { sel[o.id] = { sel: true, resp: o.resp || colabs[0] || '' } })
@@ -92,6 +98,12 @@ export default function Clientes() {
         regime,
         telefone: f.telefone || telefone,
         email: f.email || email,
+        logradouro: f.logradouro || dados.logradouro || '',
+        numero_endereco: f.numero_endereco || dados.numero || '',
+        complemento: f.complemento || dados.complemento || '',
+        bairro: f.bairro || dados.bairro || '',
+        cep: f.cep || dados.cep || '',
+        uf: dados.uf || f.uf,
       }))
     } catch (err) {
       alert(`Não foi possível buscar o CNPJ: ${err.message}`)
@@ -170,6 +182,51 @@ export default function Clientes() {
       alert(err.message)
     } finally {
       setConvidando(null)
+    }
+  }
+
+  // Emissão em HOMOLOGAÇÃO (teste) — ainda não liberado para produção.
+  async function emitirNfseCliente(cliente) {
+    if (!cliente.cnpj) {
+      alert('Este cliente não tem CNPJ cadastrado. Adicione um CNPJ antes de emitir NFS-e.')
+      return
+    }
+    if (!cliente.logradouro) {
+      alert('Este cliente não tem endereço cadastrado. Adicione o endereço antes de emitir NFS-e — necessário para o cálculo de impostos pós-reforma tributária.')
+      return
+    }
+    const valor = window.prompt(`Valor do serviço para ${cliente.nome} (R$):`, cliente.valor_honorario || '')
+    if (!valor) return
+    const mesRef = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    const discriminacao = window.prompt('Discriminação do serviço:', `Honorários contábeis referentes a ${mesRef}`)
+    if (!discriminacao || discriminacao.trim().length < 10) {
+      alert('A discriminação precisa ter pelo menos 10 caracteres.')
+      return
+    }
+    if (!window.confirm(`Emitir NFS-e de R$ ${valor} para ${cliente.nome}? (ambiente de HOMOLOGAÇÃO — teste, ainda não é produção)`)) return
+
+    setEmitindoNfse(cliente.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/nfse-emitir', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          ambiente: 'homologacao',
+          clienteId: cliente.id,
+          dados: { valorServicos: parseFloat(valor), discriminacao },
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao emitir NFS-e')
+      alert(`NFS-e emitida (homologação)!\nNúmero: ${data.numero}\nCódigo de verificação: ${data.codigoVerificacao}`)
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setEmitindoNfse(null)
     }
   }
 
@@ -254,6 +311,14 @@ export default function Clientes() {
                         >
                           {convidando === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
                         </button>
+                        <button
+                          onClick={() => emitirNfseCliente(c)}
+                          disabled={emitindoNfse === c.id}
+                          className="btn-ghost btn-sm p-1.5 text-brand-600 hover:bg-brand-50"
+                          title="Emitir NFS-e (homologação)"
+                        >
+                          {emitindoNfse === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
+                        </button>
                       </>}
                     </div>
                   </td>
@@ -334,6 +399,37 @@ export default function Clientes() {
                       className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all ${form.tipo === 'temporario' ? 'bg-gray-100 text-gray-800 border-gray-400' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
                       ⏱ Temporário
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Endereço */}
+              <div className="border-t border-gray-100 pt-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Endereço (necessário para emitir NFS-e)</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Logradouro</label>
+                    <input className="input" value={form.logradouro} onChange={e => setForm(f => ({...f, logradouro: e.target.value}))} placeholder="Rua/Avenida" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Número</label>
+                    <input className="input" value={form.numero_endereco} onChange={e => setForm(f => ({...f, numero_endereco: e.target.value}))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Complemento</label>
+                    <input className="input" value={form.complemento} onChange={e => setForm(f => ({...f, complemento: e.target.value}))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Bairro</label>
+                    <input className="input" value={form.bairro} onChange={e => setForm(f => ({...f, bairro: e.target.value}))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">CEP</label>
+                    <input className="input" value={form.cep} onChange={e => setForm(f => ({...f, cep: e.target.value}))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">UF</label>
+                    <input className="input" value={form.uf} maxLength={2} onChange={e => setForm(f => ({...f, uf: e.target.value.toUpperCase()}))} />
                   </div>
                 </div>
               </div>

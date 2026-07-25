@@ -358,6 +358,18 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
   return enviarOperacaoWebiss('GerarNfse', envelopeXml, ambiente);
 }
 
+// Extrai os dados principais de uma resposta de sucesso do GerarNfse
+// (a primeira ocorrência de cada tag é sempre a do <InfNfse> raiz, antes de
+// qualquer eco aninhado de dados enviados na requisição original).
+export function parseNfseResposta(xml) {
+  return {
+    numero: xml.match(/<Numero>([\s\S]*?)<\/Numero>/)?.[1],
+    codigoVerificacao: xml.match(/<CodigoVerificacao>([\s\S]*?)<\/CodigoVerificacao>/)?.[1],
+    chaveAcesso: xml.match(/<ChaveAcesso>([\s\S]*?)<\/ChaveAcesso>/)?.[1],
+    dataEmissao: xml.match(/<DataEmissao>([\s\S]*?)<\/DataEmissao>/)?.[1],
+  };
+}
+
 // ─── Consultas de NFS-e já emitidas ─────────────────────────────────────────
 //
 // Identificação do Prestador (CARSANT) usada em todas as consultas — o
