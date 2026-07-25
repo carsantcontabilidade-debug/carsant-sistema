@@ -17,6 +17,12 @@ const CARSANT = {
   optanteSimplesNacional: 1, // 1-Sim, confirmado por Ronaldo
   incentivoFiscal: 2, // 1-Sim, 2-Não
   regimeEspecialTributacao: 6, // 6-ME/EPP (Simples Nacional, CARSANT é LTDA, não MEI)
+  // Alíquota efetiva atual do ISS pelo Simples Nacional, confirmada em duas
+  // NFS-e reais já emitidas (produção e homologação, ambas com Aliquota=2%
+  // na resposta). Enviar explicitamente evita que o WebISS tente calcular
+  // sozinho — parece que só a aplicação web deles faz esse cálculo, não o
+  // webservice de terceiros.
+  aliquotaSimplesNacional: 0.02,
 };
 
 // Em homologação, o cadastro de teste da CARSANT no WebISS usa um código de
@@ -95,9 +101,13 @@ function formatarData(date = new Date()) {
 export function montarInfDeclaracaoDps(dados) {
   const idTag = `dps_${CARSANT.cnpj}_${dados.rpsSerie}_${dados.rpsNumero}`;
   const valorServicos = formatarValor(dados.valorServicos);
-  const aliquota = dados.aliquota != null ? Number(dados.aliquota).toFixed(4) : null;
-  const valorIss = dados.aliquota != null
-    ? formatarValor(dados.valorServicos * dados.aliquota)
+  // aliquotaFracao é usada só para calcular ValorIss (0.02 = 2% de 500 = 10).
+  // O campo <Aliquota> em si é em escala percentual direta (2, não 0.02) —
+  // confirmado na resposta de NFS-e reais da CARSANT (<Aliquota>2</Aliquota>).
+  const aliquotaFracao = dados.aliquota != null ? Number(dados.aliquota) : CARSANT.aliquotaSimplesNacional;
+  const aliquota = aliquotaFracao != null ? (aliquotaFracao * 100).toFixed(4) : null;
+  const valorIss = aliquotaFracao != null
+    ? formatarValor(dados.valorServicos * aliquotaFracao)
     : null;
   const codigoMunicipio = codigoMunicipioPrestador(dados.ambiente);
 
