@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import QRCode from "qrcode";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -21,6 +22,10 @@ function formatarValor(v) {
 function formatarData(d) {
   if (!d) return "—";
   return new Date(d + "T12:00:00").toLocaleDateString("pt-BR");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 async function chamarEdgeFunction(action, payload) {
@@ -531,7 +536,10 @@ export default function Cobrancas() {
     const notaFiscal = await buscarNotaFiscalDaCobranca(cob.id);
     setProcessando(false);
 
-    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
+    // Pix Copia e Cola costuma ter um trecho parecido com URL (ex: pix.bcb.gov.br)
+    // embutido — sem formatação, o WhatsApp sublinha o código inteiro como link.
+    // Bloco de código (```) evita isso, sem alterar um caractere do conteúdo.
+    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
@@ -541,6 +549,34 @@ export default function Cobrancas() {
     const notaFiscal = await buscarNotaFiscalDaCobranca(cob.id);
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
     const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\nCódigo de verificação: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+
+    // QR Code gerado a partir do próprio texto do Pix (o Inter só devolve o
+    // copia-e-cola, não uma imagem pronta) — não altera nada no código, só
+    // "desenha" o mesmo conteúdo.
+    let qrCodeBase64 = null;
+    if (cob.pix_copia_cola) {
+      try {
+        const dataUrl = await QRCode.toDataURL(cob.pix_copia_cola, { width: 240 });
+        qrCodeBase64 = dataUrl.split(",")[1];
+      } catch (qrErr) {
+        console.warn("Não foi possível gerar o QR Code do Pix:", qrErr.message);
+      }
+    }
+
+    // Versão HTML: o Pix vai num bloco <code>, não como texto solto — evita
+    // que o Gmail reconheça o trecho "pix.bcb.gov.br" (comum em Pix dinâmico
+    // do Inter) como link e sublinhe o código inteiro.
+    const corpoHtml = `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">` +
+      `<p>Prezado(a) ${escapeHtml(cob.clientes?.nome)},</p>` +
+      `<p>Segue a cobrança referente a ${escapeHtml(cob.descricao)}.</p>` +
+      `<p><strong>Valor:</strong> ${escapeHtml(formatarValor(cob.valor))}<br><strong>Vencimento:</strong> ${escapeHtml(formatarData(cob.vencimento))}</p>` +
+      (qrCodeBase64 ? `<p><strong>Pague com Pix (aponte a câmera do banco):</strong><br><img src="cid:pixqrcode" alt="QR Code Pix" width="200" height="200" /></p>` : "") +
+      (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${escapeHtml(cob.pix_copia_cola)}</code></p>` : "") +
+      (cob.link_boleto ? `<p><a href="${cob.link_boleto}">Boleto para visualização/impressão</a></p>` : "") +
+      (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>Código de verificação: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
+      `<p>Em caso de dúvidas, entre em contato.</p>` +
+      `<p>Atenciosamente,<br>Equipe CARSANT Contabilidade<br>Feira de Santana, BA</p>` +
+    `</div>`;
 
     let attachmentBase64 = null;
     try {
@@ -556,7 +592,9 @@ export default function Cobrancas() {
         to: email,
         subject: assunto,
         text: corpo,
+        html: corpoHtml,
         ...(attachmentBase64 ? { attachmentBase64, attachmentFilename: "boleto.pdf" } : {}),
+        ...(qrCodeBase64 ? { attachments: [{ filename: "pix-qrcode.png", contentBase64: qrCodeBase64, cid: "pixqrcode" }] } : {}),
       }),
     });
     const data = await resp.json();
