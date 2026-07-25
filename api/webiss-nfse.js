@@ -286,7 +286,11 @@ function unescapeXml(str) {
 // Não há fila/throttling automático aqui pois o uso da CARSANT é de emissão
 // unitária diluída ao longo do dia — se no futuro isso passar a ser chamado
 // em lote, é necessário espaçar as chamadas em pelo menos 5s.
-export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
+//
+// Genérico para qualquer operação do webservice (GerarNfse, ConsultarNfse...)
+// — todas seguem o mesmo padrão de envelope (nfseCabecMsg/nfseDadosMsg como
+// strings simples, confirmado via WSDL para cada operação).
+async function enviarOperacaoWebiss(operacao, envelopeXml, ambiente = 'homologacao') {
   const urlStr = WEBISS_URLS[ambiente];
   if (!urlStr || urlStr.startsWith('TODO_')) {
     throw new Error(`URL do Web Service (${ambiente}) não configurada.`);
@@ -297,10 +301,10 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">` +
       `<soap:Body>` +
-        `<GerarNfseRequest xmlns="http://nfse.abrasf.org.br">` +
+        `<${operacao}Request xmlns="http://nfse.abrasf.org.br">` +
           `<nfseCabecMsg xmlns="">${escapeXml(montarCabecalho())}</nfseCabecMsg>` +
           `<nfseDadosMsg xmlns="">${escapeXml(envelopeXml)}</nfseDadosMsg>` +
-        `</GerarNfseRequest>` +
+        `</${operacao}Request>` +
       `</soap:Body>` +
     `</soap:Envelope>`;
 
@@ -317,7 +321,7 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
       agent,
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: 'http://nfse.abrasf.org.br/GerarNfse',
+        SOAPAction: `http://nfse.abrasf.org.br/${operacao}`,
         'Content-Length': Buffer.byteLength(soapBody),
       },
     }, (res) => {
@@ -344,8 +348,66 @@ export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
     const codigos = [...outputXml.matchAll(/<Codigo>([\s\S]*?)<\/Codigo>/g)].map((m) => m[1]);
     const mensagens = [...outputXml.matchAll(/<Mensagem>([\s\S]*?)<\/Mensagem>/g)].map((m) => m[1]);
     const detalhes = mensagens.map((m, i) => `[${codigos[i] || '?'}] ${m}`).join('; ');
-    throw new Error(`WebISS recusou a emissão: ${detalhes || '(sem detalhes)'}\n\n--- XML COMPLETO DA RESPOSTA ---\n${outputXml}`);
+    throw new Error(`WebISS recusou a operação (${operacao}): ${detalhes || '(sem detalhes)'}\n\n--- XML COMPLETO DA RESPOSTA ---\n${outputXml}`);
   }
 
   return outputXml;
+}
+
+export async function enviarGerarNfse(envelopeXml, ambiente = 'homologacao') {
+  return enviarOperacaoWebiss('GerarNfse', envelopeXml, ambiente);
+}
+
+// ─── Consultas de NFS-e já emitidas ─────────────────────────────────────────
+//
+// Identificação do Prestador (CARSANT) usada em todas as consultas — o
+// código de município não entra aqui (só é relevante na emissão em si).
+function prestadorIdentificacaoXml() {
+  return `<Prestador>` +
+    `<CpfCnpj><Cnpj>${CARSANT.cnpj}</Cnpj></CpfCnpj>` +
+    `<InscricaoMunicipal>${CARSANT.inscricaoMunicipal}</InscricaoMunicipal>` +
+  `</Prestador>`;
+}
+
+// filtros = { numeroNfse, periodoEmissao: {inicial, final}, periodoCompetencia:
+// {inicial, final}, tomadorCnpj, pagina } — datas em "AAAA-MM-DD".
+export function montarConsultarNfseServicoPrestadoEnvio(filtros = {}) {
+  const periodoXml = filtros.periodoEmissao
+    ? `<PeriodoEmissao><DataInicial>${filtros.periodoEmissao.inicial}</DataInicial><DataFinal>${filtros.periodoEmissao.final}</DataFinal></PeriodoEmissao>`
+    : filtros.periodoCompetencia
+      ? `<PeriodoCompetencia><DataInicial>${filtros.periodoCompetencia.inicial}</DataInicial><DataFinal>${filtros.periodoCompetencia.final}</DataFinal></PeriodoCompetencia>`
+      : '';
+  const tomadorXml = filtros.tomadorCnpj ? `<Tomador><CpfCnpj><Cnpj>${filtros.tomadorCnpj}</Cnpj></CpfCnpj></Tomador>` : '';
+
+  return `<ConsultarNfseServicoPrestadoEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">` +
+    prestadorIdentificacaoXml() +
+    (filtros.numeroNfse ? `<NumeroNfse>${filtros.numeroNfse}</NumeroNfse>` : '') +
+    periodoXml +
+    tomadorXml +
+    `<Pagina>${filtros.pagina || 1}</Pagina>` +
+  `</ConsultarNfseServicoPrestadoEnvio>`;
+}
+
+export async function consultarNfseServicoPrestado(filtros, ambiente = 'homologacao') {
+  const envelope = montarConsultarNfseServicoPrestadoEnvio(filtros);
+  return enviarOperacaoWebiss('ConsultarNfseServicoPrestado', envelope, ambiente);
+}
+
+// filtros = { numeroInicial, numeroFinal (opcional), pagina } — usado tanto
+// para listar um intervalo quanto para descobrir o número da última nota
+// emitida (numeroInicial=1, sem numeroFinal, olhando a última página).
+export function montarConsultarNfsePorFaixaEnvio(filtros) {
+  return `<ConsultarNfseFaixaEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">` +
+    prestadorIdentificacaoXml() +
+    `<Faixa>` +
+      `<NumeroNfseInicial>${filtros.numeroInicial}</NumeroNfseInicial>` +
+      (filtros.numeroFinal ? `<NumeroNfseFinal>${filtros.numeroFinal}</NumeroNfseFinal>` : '') +
+    `</Faixa>` +
+    `<Pagina>${filtros.pagina || 1}</Pagina>` +
+  `</ConsultarNfseFaixaEnvio>`;
+}
+
+export async function consultarNfsePorFaixa(filtros, ambiente = 'homologacao') {
+  const envelope = montarConsultarNfsePorFaixaEnvio(filtros);
+  return enviarOperacaoWebiss('ConsultarNfsePorFaixa', envelope, ambiente);
 }

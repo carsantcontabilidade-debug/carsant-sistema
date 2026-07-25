@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Loader2, FileText, AlertTriangle } from 'lucide-react'
+import { Loader2, FileText, AlertTriangle, Search } from 'lucide-react'
 
 const emptyForm = {
   rpsNumero: '1',
@@ -20,6 +20,15 @@ const emptyForm = {
   tomadorCep: '44001525',
 }
 
+const emptyConsulta = {
+  tipo: 'porFaixa',
+  numeroInicial: '1',
+  numeroFinal: '',
+  dataInicial: new Date().toISOString().slice(0, 7) + '-01',
+  dataFinal: new Date().toISOString().slice(0, 10),
+  tomadorCnpj: '',
+}
+
 export default function NfseEmitir() {
   const { profile } = useAuth()
   const [form, setForm] = useState(emptyForm)
@@ -27,8 +36,47 @@ export default function NfseEmitir() {
   const [resultado, setResultado] = useState(null)
   const [erro, setErro] = useState('')
 
+  const [consulta, setConsulta] = useState(emptyConsulta)
+  const [consultando, setConsultando] = useState(false)
+  const [resultadoConsulta, setResultadoConsulta] = useState(null)
+  const [erroConsulta, setErroConsulta] = useState('')
+
   if (profile?.role !== 'gestor') {
     return <div className="p-8 text-center text-gray-500">Acesso restrito ao gestor.</div>
+  }
+
+  async function consultar(e) {
+    e.preventDefault()
+    setErroConsulta('')
+    setResultadoConsulta(null)
+    setConsultando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const filtros = consulta.tipo === 'porFaixa'
+        ? {
+            numeroInicial: consulta.numeroInicial,
+            numeroFinal: consulta.numeroFinal || undefined,
+          }
+        : {
+            periodoEmissao: { inicial: consulta.dataInicial, final: consulta.dataFinal },
+            tomadorCnpj: consulta.tomadorCnpj.replace(/\D/g, '') || undefined,
+          }
+      const resp = await fetch('/api/nfse-consultar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ ambiente: 'homologacao', tipo: consulta.tipo, filtros }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao consultar NFS-e')
+      setResultadoConsulta(data)
+    } catch (err) {
+      setErroConsulta(err.message)
+    } finally {
+      setConsultando(false)
+    }
   }
 
   async function emitir(e) {
@@ -197,6 +245,83 @@ export default function NfseEmitir() {
           <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap">{resultado.resultadoXml}</pre>
         </div>
       )}
+
+      <div className="border-t border-gray-200 pt-6">
+        <h2 className="text-lg font-bold text-gray-900 mb-1">Consultar NFS-e emitidas</h2>
+        <p className="text-sm text-gray-500 mb-4">Útil para descobrir o próximo número de RPS a usar e para conferir notas já emitidas.</p>
+
+        <form onSubmit={consultar} className="card p-5 space-y-4">
+          <div className="form-group">
+            <label className="form-label">Tipo de consulta</label>
+            <select
+              className="select"
+              value={consulta.tipo}
+              onChange={e => setConsulta(c => ({ ...c, tipo: e.target.value }))}
+            >
+              <option value="porFaixa">Por número (faixa)</option>
+              <option value="porPeriodo">Por período de emissão</option>
+            </select>
+          </div>
+
+          {consulta.tipo === 'porFaixa' ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="form-group">
+                <label className="form-label">Número inicial</label>
+                <input className="input" value={consulta.numeroInicial} onChange={e => setConsulta(c => ({ ...c, numeroInicial: e.target.value.replace(/\D/g, '') }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Número final (opcional)</label>
+                <input className="input" value={consulta.numeroFinal} onChange={e => setConsulta(c => ({ ...c, numeroFinal: e.target.value.replace(/\D/g, '') }))} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="form-group">
+                <label className="form-label">Data inicial</label>
+                <input type="date" className="input" value={consulta.dataInicial} onChange={e => setConsulta(c => ({ ...c, dataInicial: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Data final</label>
+                <input type="date" className="input" value={consulta.dataFinal} onChange={e => setConsulta(c => ({ ...c, dataFinal: e.target.value }))} />
+              </div>
+              <div className="form-group col-span-2">
+                <label className="form-label">CNPJ do tomador (opcional, filtra por cliente)</label>
+                <input
+                  className="input"
+                  value={consulta.tomadorCnpj}
+                  onChange={e => setConsulta(c => ({ ...c, tomadorCnpj: e.target.value.replace(/\D/g, '').slice(0, 14) }))}
+                  maxLength={14}
+                />
+              </div>
+            </div>
+          )}
+
+          {erroConsulta && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+              <div className="whitespace-pre-wrap break-words">{erroConsulta}</div>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(erroConsulta)}
+                className="mt-2 text-xs font-medium text-red-800 underline"
+              >
+                Copiar erro completo
+              </button>
+            </div>
+          )}
+
+          <button type="submit" disabled={consultando} className="btn-primary gap-2">
+            {consultando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {consultando ? 'Consultando...' : 'Consultar'}
+          </button>
+        </form>
+
+        {resultadoConsulta && (
+          <div className="card p-5 mt-4">
+            <h3 className="text-sm font-semibold text-green-700 mb-3">✅ Resposta do WebISS ({resultadoConsulta.ambiente})</h3>
+            <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap">{resultadoConsulta.resultadoXml}</pre>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
