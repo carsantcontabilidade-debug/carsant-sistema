@@ -36,7 +36,7 @@ function PageLoader() {
 }
 
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, profile, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
@@ -45,7 +45,12 @@ function PrivateRoute({ children }) {
       </div>
     </div>
   )
-  return user ? children : <Navigate to="/login" />
+  if (!user) return <Navigate to="/login" />
+  // Sessão autenticada mas sem linha em profiles = conta de cliente do
+  // Portal, não de funcionário — nunca deixa entrar na área interna,
+  // mesmo que ela tenha acabado logada no domínio errado.
+  if (!profile) return <Navigate to="/portal" />
+  return children
 }
 
 function GestorRoute({ children }) {
