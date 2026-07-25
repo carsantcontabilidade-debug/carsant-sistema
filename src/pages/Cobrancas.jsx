@@ -28,6 +28,17 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Quebra o texto em vários <span> separados, sem adicionar nem remover nenhum
+// caractere — só muda como o texto fica agrupado no HTML. Isso impede que o
+// Gmail reconheça um trecho como "pix.bcb.gov.br" (comum em Pix dinâmico do
+// Inter) como URL e sublinhe o código Pix inteiro como link, já que o
+// autolink do Gmail não junta texto de elementos separados para casar o
+// padrão. Selecionar/copiar o texto continua reproduzindo o código exato.
+function htmlSemLinkAutomatico(texto) {
+  const partes = String(texto).match(/.{1,3}/g) || [];
+  return partes.map((p) => `<span>${escapeHtml(p)}</span>`).join("");
+}
+
 async function chamarEdgeFunction(action, payload) {
   const resp = await fetch(`/api/inter-cobranca`, {
     method: "POST",
@@ -571,7 +582,7 @@ export default function Cobrancas() {
       `<p>Segue a cobrança referente a ${escapeHtml(cob.descricao)}.</p>` +
       `<p><strong>Valor:</strong> ${escapeHtml(formatarValor(cob.valor))}<br><strong>Vencimento:</strong> ${escapeHtml(formatarData(cob.vencimento))}</p>` +
       (qrCodeBase64 ? `<p><strong>Pague com Pix (aponte a câmera do banco):</strong><br><img src="cid:pixqrcode" alt="QR Code Pix" width="200" height="200" /></p>` : "") +
-      (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${escapeHtml(cob.pix_copia_cola)}</code></p>` : "") +
+      (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${htmlSemLinkAutomatico(cob.pix_copia_cola)}</code></p>` : "") +
       (cob.link_boleto ? `<p><a href="${cob.link_boleto}">Boleto para visualização/impressão</a></p>` : "") +
       (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>Código de verificação: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
       `<p>Em caso de dúvidas, entre em contato.</p>` +
