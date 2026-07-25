@@ -122,7 +122,7 @@ export default async function handler(req, res) {
     options: { redirectTo, data: { cliente_id: cliente.id, nome: cliente.nome } },
   });
 
-  if (linkError || !linkData?.properties?.action_link) {
+  if (linkError || !linkData?.properties?.hashed_token) {
     return res.status(502).json({ error: `Falha ao gerar link: ${linkError?.message || 'link não gerado'}` });
   }
 
@@ -147,7 +147,15 @@ export default async function handler(req, res) {
     }
   }
 
-  const { assunto, html } = corpoEmail({ nome: cliente.nome, link: linkData.properties.action_link, reenvio });
+  // Monta o link para a NOSSA tela (não o action_link do Supabase, que vai
+  // direto para o endpoint de verificação deles) — scanners de segurança de
+  // e-mail (Gmail, corporativos) costumam "pré-visitar" links automaticamente
+  // antes da pessoa clicar de verdade, consumindo o token de uso único do
+  // action_link antes da hora. Com token_hash/type na nossa própria URL, a
+  // verificação só acontece quando o JS da nossa tela chama verifyOtp (nunca
+  // automaticamente ao só carregar a página).
+  const linkParaEmail = `${redirectTo}?token_hash=${linkData.properties.hashed_token}&type=${linkData.properties.verification_type}`;
+  const { assunto, html } = corpoEmail({ nome: cliente.nome, link: linkParaEmail, reenvio });
 
   try {
     await enviarEmailTransacional({ to: cliente.email, subject: assunto, html });

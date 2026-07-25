@@ -1,12 +1,19 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Loader2 } from 'lucide-react'
 
-// O link do convite/recuperação já deixa uma sessão ativa (Supabase lê o
-// token da URL automaticamente). Aqui só pedimos a senha definitiva.
+// O link do e-mail traz token_hash/type como query params da NOSSA própria
+// URL (não o action_link direto do Supabase) — de propósito: a verificação
+// (verifyOtp) só acontece aqui, no momento em que o usuário envia o
+// formulário, nunca automaticamente ao carregar a página. Isso evita que um
+// scanner de segurança de e-mail (que só baixa a página, sem rodar JS nem
+// clicar em nada) consuma o token de uso único antes da pessoa clicar de
+// verdade — foi exatamente isso que causava "Email link is invalid or has
+// expired" mesmo em links recém-enviados.
 export default function PortalDefinirSenha() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [password, setPassword] = useState('')
   const [confirmar, setConfirmar] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,6 +31,18 @@ export default function PortalDefinirSenha() {
       return
     }
     setLoading(true)
+
+    const tokenHash = searchParams.get('token_hash')
+    const type = searchParams.get('type')
+    if (tokenHash && type) {
+      const { error: verifyError } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
+      if (verifyError) {
+        setLoading(false)
+        setError('Este link expirou ou já foi usado. Peça um novo convite/reenvio ao escritório.')
+        return
+      }
+    }
+
     const { error } = await supabase.auth.updateUser({ password })
     setLoading(false)
     if (error) {
