@@ -185,7 +185,6 @@ export default function Clientes() {
     }
   }
 
-  // Emissão em HOMOLOGAÇÃO (teste) — ainda não liberado para produção.
   async function emitirNfseCliente(cliente) {
     if (!cliente.cnpj) {
       alert('Este cliente não tem CNPJ cadastrado. Adicione um CNPJ antes de emitir NFS-e.')
@@ -203,8 +202,25 @@ export default function Clientes() {
       alert('A discriminação precisa ter pelo menos 10 caracteres.')
       return
     }
-    if (!window.confirm(`Emitir NFS-e de R$ ${valor} para ${cliente.nome}? (ambiente de HOMOLOGAÇÃO — teste, ainda não é produção)`)) return
 
+    // Trava extra para produção: emissão real, não é algo pra sair por
+    // engano num clique. Homologação continua só com um confirm normal.
+    const isProducao = window.confirm(
+      `Emitir para ${cliente.nome} em PRODUÇÃO (nota fiscal real, não em teste)?\n\nOK = produção · Cancelar = homologação (teste)`
+    )
+    if (isProducao) {
+      const confirmacao = window.prompt(
+        `⚠️ ATENÇÃO: isso vai emitir uma NFS-e REAL de R$ ${valor} para ${cliente.nome} — não é ambiente de teste.\n\nDigite PRODUCAO (sem acento) para confirmar:`
+      )
+      if (confirmacao !== 'PRODUCAO') {
+        alert('Confirmação incorreta — emissão cancelada.')
+        return
+      }
+    } else if (!window.confirm(`Emitir NFS-e de R$ ${valor} para ${cliente.nome}? (ambiente de HOMOLOGAÇÃO — teste)`)) {
+      return
+    }
+
+    const ambiente = isProducao ? 'producao' : 'homologacao'
     setEmitindoNfse(cliente.id)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -215,14 +231,14 @@ export default function Clientes() {
           Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          ambiente: 'homologacao',
+          ambiente,
           clienteId: cliente.id,
           dados: { valorServicos: parseFloat(valor), discriminacao },
         }),
       })
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.error || 'Falha ao emitir NFS-e')
-      alert(`NFS-e emitida (homologação)!\nNúmero: ${data.numero}\nCódigo de verificação: ${data.codigoVerificacao}`)
+      alert(`NFS-e emitida (${ambiente})!\nNúmero: ${data.numero}\nCódigo de verificação: ${data.codigoVerificacao}`)
     } catch (err) {
       alert(err.message)
     } finally {
