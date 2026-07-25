@@ -20,10 +20,15 @@ const emptyForm = {
   tomadorCep: '44001525',
 }
 
+const anoAtual = new Date().getFullYear()
+
 const emptyConsulta = {
   tipo: 'porFaixa',
-  numeroInicial: '1',
-  numeroFinal: '',
+  // O número da NFS-e não é um contador simples: é ano + sequencial de 9
+  // dígitos (ex: 2026000000001). NumeroNfseFinal também é obrigatório na
+  // prática, mesmo o XSD marcando como opcional.
+  numeroInicial: `${anoAtual}000000001`,
+  numeroFinal: `${anoAtual}000000099`,
   dataInicial: new Date().toISOString().slice(0, 7) + '-01',
   dataFinal: new Date().toISOString().slice(0, 10),
   tomadorCnpj: '',
@@ -270,7 +275,7 @@ export default function NfseEmitir() {
                 <input className="input" value={consulta.numeroInicial} onChange={e => setConsulta(c => ({ ...c, numeroInicial: e.target.value.replace(/\D/g, '') }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Número final (opcional)</label>
+                <label className="form-label">Número final</label>
                 <input className="input" value={consulta.numeroFinal} onChange={e => setConsulta(c => ({ ...c, numeroFinal: e.target.value.replace(/\D/g, '') }))} />
               </div>
             </div>
