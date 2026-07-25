@@ -22,7 +22,7 @@ const CATEGORIA_LABEL = {
 }
 
 export default function PortalDocumentos() {
-  const { cliente } = usePortalAuth()
+  const { cliente, marcarSecaoVisitada } = usePortalAuth()
   const [documentos, setDocumentos] = useState([])
   const [loading, setLoading] = useState(true)
   const [categoria, setCategoria] = useState('nota_fiscal')
@@ -30,7 +30,7 @@ export default function PortalDocumentos() {
   const [enviando, setEnviando] = useState(false)
   const [urls, setUrls] = useState({})
 
-  useEffect(() => { if (cliente?.id) fetchDocumentos() }, [cliente?.id])
+  useEffect(() => { if (cliente?.id) { fetchDocumentos(); marcarSecaoVisitada('documentos') } }, [cliente?.id])
 
   async function fetchDocumentos() {
     setLoading(true)

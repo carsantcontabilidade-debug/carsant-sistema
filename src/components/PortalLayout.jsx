@@ -5,13 +5,13 @@ import { Home, Wallet, FolderOpen, MessageCircle, LogOut, Menu, X } from 'lucide
 
 const navItems = [
   { to: '/portal', icon: Home, label: 'Início', end: true },
-  { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças' },
-  { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos' },
-  { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação' },
+  { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças', secao: 'honorarios' },
+  { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos', secao: 'documentos' },
+  { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação', secao: 'comunicacao' },
 ]
 
 export default function PortalLayout() {
-  const { cliente, signOut } = usePortalAuth()
+  const { cliente, signOut, contadores } = usePortalAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -26,18 +26,26 @@ export default function PortalLayout() {
         <img src="/logo.png" alt="CARSANT" className="h-10 w-auto rounded-lg" />
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            onClick={() => mobile && setSidebarOpen(false)}
-          >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        {navItems.map(({ to, icon: Icon, label, end, secao }) => {
+          const contador = secao ? contadores[secao] : 0
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              onClick={() => mobile && setSidebarOpen(false)}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span className="flex-1">{label}</span>
+              {contador > 0 && (
+                <span className="bg-red-500 text-white text-xs font-semibold rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1">
+                  {contador > 99 ? '99+' : contador}
+                </span>
+              )}
+            </NavLink>
+          )
+        })}
       </nav>
       <div className="px-4 py-4 border-t border-gray-100">
         <div className="flex items-center gap-3 mb-3">

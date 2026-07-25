@@ -3,10 +3,13 @@ import { supabase } from '../lib/supabase'
 
 const PortalAuthContext = createContext({})
 
+const SECOES = ['honorarios', 'documentos', 'comunicacao']
+
 export function PortalAuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [cliente, setCliente] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [contadores, setContadores] = useState({ honorarios: 0, documentos: 0, comunicacao: 0 })
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -28,6 +31,41 @@ export function PortalAuthProvider({ children }) {
     const { data } = await supabase.from('clientes').select('*').eq('auth_user_id', userId).single()
     setCliente(data)
     setLoading(false)
+    if (data?.id) fetchContadores(data.id)
+  }
+
+  // "Novo" = criado depois da última visita registrada naquela seção (ou
+  // qualquer item, se o cliente nunca visitou a seção ainda).
+  async function fetchContadores(clienteId) {
+    const { data: leituras } = await supabase.from('portal_leituras').select('secao, visitado_em').eq('cliente_id', clienteId)
+    const visitadoEm = Object.fromEntries((leituras || []).map(l => [l.secao, l.visitado_em]))
+
+    const [cobrancasRes, notasRes, documentosRes, comunicacoesRes] = await Promise.all([
+      contarNovos('cobrancas', clienteId, visitadoEm.honorarios),
+      contarNovos('notas_fiscais', clienteId, visitadoEm.honorarios, { status: 'emitida' }),
+      contarNovos('documentos_cliente', clienteId, visitadoEm.documentos, { origem: 'escritorio' }),
+      contarNovos('comunicacoes', clienteId, visitadoEm.comunicacao),
+    ])
+
+    setContadores({
+      honorarios: cobrancasRes + notasRes,
+      documentos: documentosRes,
+      comunicacao: comunicacoesRes,
+    })
+  }
+
+  async function contarNovos(tabela, clienteId, desde, filtrosExtras = {}) {
+    let query = supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('cliente_id', clienteId)
+    Object.entries(filtrosExtras).forEach(([campo, valor]) => { query = query.eq(campo, valor) })
+    if (desde) query = query.gt('created_at', desde)
+    const { count } = await query
+    return count || 0
+  }
+
+  async function marcarSecaoVisitada(secao) {
+    if (!cliente?.id || !SECOES.includes(secao)) return
+    setContadores(c => ({ ...c, [secao]: 0 }))
+    await supabase.from('portal_leituras').upsert({ cliente_id: cliente.id, secao, visitado_em: new Date().toISOString() })
   }
 
   async function signIn(email, password) {
@@ -40,7 +78,7 @@ export function PortalAuthProvider({ children }) {
   }
 
   return (
-    <PortalAuthContext.Provider value={{ user, cliente, loading, signIn, signOut }}>
+    <PortalAuthContext.Provider value={{ user, cliente, loading, signIn, signOut, contadores, marcarSecaoVisitada }}>
       {children}
     </PortalAuthContext.Provider>
   )

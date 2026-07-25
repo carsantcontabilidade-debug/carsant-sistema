@@ -24,13 +24,13 @@ function fmtData(d) {
 }
 
 export default function PortalHonorarios() {
-  const { cliente } = usePortalAuth()
+  const { cliente, marcarSecaoVisitada } = usePortalAuth()
   const [pagamentos, setPagamentos] = useState([])
   const [cobrancas, setCobrancas] = useState([])
   const [notasFiscais, setNotasFiscais] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (cliente?.id) fetchDados() }, [cliente?.id])
+  useEffect(() => { if (cliente?.id) { fetchDados(); marcarSecaoVisitada('honorarios') } }, [cliente?.id])
 
   async function fetchDados() {
     setLoading(true)

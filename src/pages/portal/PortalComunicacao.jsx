@@ -15,11 +15,11 @@ function fmtData(d) {
 }
 
 export default function PortalComunicacao() {
-  const { cliente } = usePortalAuth()
+  const { cliente, marcarSecaoVisitada } = usePortalAuth()
   const [comunicacoes, setComunicacoes] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (cliente?.id) fetchComunicacoes() }, [cliente?.id])
+  useEffect(() => { if (cliente?.id) { fetchComunicacoes(); marcarSecaoVisitada('comunicacao') } }, [cliente?.id])
 
   async function fetchComunicacoes() {
     setLoading(true)
