@@ -12,6 +12,7 @@ import { SignedXml } from 'xml-crypto';
 const CARSANT = {
   cnpj: process.env.CARSANT_CNPJ || 'TODO_CNPJ_SOMENTE_NUMEROS',
   inscricaoMunicipal: process.env.CARSANT_INSCRICAO_MUNICIPAL || 'TODO_INSCRICAO_MUNICIPAL',
+  inscricaoEstadual: '143275161', // Confirmada em NFS-e real da CARSANT
   codigoMunicipioIbge: '2910800', // Feira de Santana - BA (tabela IBGE)
   codigoCnae: '6920601', // Atividades de contabilidade (confirmado em NFS-e real da CARSANT)
   optanteSimplesNacional: 1, // 1-Sim, confirmado por Ronaldo
@@ -147,6 +148,7 @@ export function montarInfDeclaracaoDps(dados) {
     `<Prestador>` +
       `<CpfCnpj><Cnpj>${CARSANT.cnpj}</Cnpj></CpfCnpj>` +
       `<InscricaoMunicipal>${CARSANT.inscricaoMunicipal}</InscricaoMunicipal>` +
+      `<InscricaoEstadual>${CARSANT.inscricaoEstadual}</InscricaoEstadual>` +
     `</Prestador>` +
     tomadorXml +
     (CARSANT.regimeEspecialTributacao ? `<RegimeEspecialTributacao>${CARSANT.regimeEspecialTributacao}</RegimeEspecialTributacao>` : '') +
@@ -175,10 +177,23 @@ function montarTomadorXml(tomador) {
     `</Endereco>`
   ) : '';
 
-  const contatoXml = tomador.email ? `<Contato><Email>${escapeXml(tomador.email)}</Email></Contato>` : '';
+  const contatoXml = (tomador.telefone || tomador.email) ? (
+    `<Contato>` +
+      (tomador.telefone ? `<Telefone>${escapeXml(tomador.telefone)}</Telefone>` : '') +
+      (tomador.email ? `<Email>${escapeXml(tomador.email)}</Email>` : '') +
+    `</Contato>`
+  ) : '';
+
+  const identificacaoTomadorXml = (cpfCnpj || tomador.inscricaoMunicipal || tomador.inscricaoEstadual) ? (
+    `<IdentificacaoTomador>` +
+      (cpfCnpj ? `<CpfCnpj>${cpfCnpj}</CpfCnpj>` : '') +
+      (tomador.inscricaoMunicipal ? `<InscricaoMunicipal>${escapeXml(tomador.inscricaoMunicipal)}</InscricaoMunicipal>` : '') +
+      (tomador.inscricaoEstadual ? `<InscricaoEstadual>${escapeXml(tomador.inscricaoEstadual)}</InscricaoEstadual>` : '') +
+    `</IdentificacaoTomador>`
+  ) : '';
 
   return `<Tomador>` +
-    (cpfCnpj ? `<IdentificacaoTomador><CpfCnpj>${cpfCnpj}</CpfCnpj></IdentificacaoTomador>` : '') +
+    identificacaoTomadorXml +
     (tomador.razaoSocial ? `<RazaoSocial>${escapeXml(tomador.razaoSocial)}</RazaoSocial>` : '') +
     enderecoXml +
     contatoXml +

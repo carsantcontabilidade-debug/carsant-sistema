@@ -13,6 +13,7 @@ const emptyForm = {
   tomadorNome: '',
   tomadorCnpj: '',
   tomadorEmail: '',
+  tomadorTelefone: '',
   tomadorLogradouro: 'Avenida Getúlio Vargas',
   tomadorNumero: '2761',
   tomadorBairro: 'Santa Mônica',
@@ -63,6 +64,7 @@ export default function NfseEmitir() {
               razaoSocial: form.tomadorNome || undefined,
               cnpj: cnpjLimpo || undefined,
               email: form.tomadorEmail || undefined,
+              telefone: form.tomadorTelefone.replace(/\D/g, '') || undefined,
               endereco: {
                 logradouro: form.tomadorLogradouro,
                 numero: form.tomadorNumero,
@@ -140,9 +142,13 @@ export default function NfseEmitir() {
                 maxLength={14}
               />
             </div>
-            <div className="form-group col-span-2">
+            <div className="form-group">
               <label className="form-label">E-mail (seu, para teste)</label>
               <input type="email" className="input" value={form.tomadorEmail} onChange={e => setForm(f => ({ ...f, tomadorEmail: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Telefone</label>
+              <input className="input" value={form.tomadorTelefone} onChange={e => setForm(f => ({ ...f, tomadorTelefone: e.target.value }))} placeholder="75999999999" />
             </div>
             <div className="form-group col-span-2">
               <label className="form-label">Logradouro</label>
