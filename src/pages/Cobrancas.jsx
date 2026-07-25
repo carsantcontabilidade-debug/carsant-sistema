@@ -61,6 +61,7 @@ export default function Cobrancas() {
     mes_referencia: "",
     enviar_email: false,
     enviar_whatsapp: false,
+    emitir_nota: false,
   });
   const [clienteForm, setClienteForm] = useState(null);
 
@@ -69,6 +70,7 @@ export default function Cobrancas() {
   const [loteBusca, setLoteBusca] = useState("");
   const [loteVencimento, setLoteVencimento] = useState("");
   const [loteMesReferencia, setLoteMesReferencia] = useState("");
+  const [loteEmitirNota, setLoteEmitirNota] = useState(false);
   const [loteProcessando, setLoteProcessando] = useState(false);
   const [loteProgresso, setLoteProgresso] = useState({ atual: 0, total: 0 });
   const [loteResultados, setLoteResultados] = useState([]);
@@ -113,6 +115,7 @@ export default function Cobrancas() {
       mes_referencia: mesRef,
       enviar_email: false,
       enviar_whatsapp: false,
+      emitir_nota: false,
     });
     setClienteForm(clientePre);
     setErro("");
@@ -205,6 +208,40 @@ export default function Cobrancas() {
     };
   }
 
+  // Emite a NFS-e do cliente vinculada a uma cobrança já criada. Ainda fixo
+  // em homologação — emitir em produção só depois de validar esse fluxo lá.
+  async function emitirNotaFiscalParaCobranca(cliente, cobranca, { valor, discriminacao, competencia }) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch("/api/nfse-emitir", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        ambiente: "homologacao",
+        clienteId: cliente.id,
+        cobrancaId: cobranca.id,
+        dados: { valorServicos: valor, discriminacao, competencia },
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Falha ao emitir NFS-e");
+    return data;
+  }
+
+  // Busca a nota fiscal já emitida e vinculada a uma cobrança (se houver),
+  // para incluir número/código de verificação no e-mail e no WhatsApp.
+  async function buscarNotaFiscalDaCobranca(cobrancaId) {
+    const { data } = await supabase
+      .from("notas_fiscais")
+      .select("numero_nfse, codigo_verificacao")
+      .eq("cobranca_id", cobrancaId)
+      .eq("status", "emitida")
+      .maybeSingle();
+    return data || null;
+  }
+
   function abrirLote() {
     const hoje = new Date();
     const vencimentoPadrao = new Date(hoje.getFullYear(), hoje.getMonth(), 10);
@@ -241,6 +278,7 @@ export default function Cobrancas() {
     setLoteProgresso({ atual: 0, total: clientesParaGerar.length });
 
     const resultados = [];
+    let notasEmitidas = 0;
     for (let i = 0; i < clientesParaGerar.length; i++) {
       const cliente = clientesParaGerar[i];
       setLoteProgresso({ atual: i + 1, total: clientesParaGerar.length });
@@ -250,14 +288,31 @@ export default function Cobrancas() {
       }
       try {
         const mesRefFormatado = loteMesReferencia.replace("-", "/");
+        const descricao = `Honorários Contábeis — ${mesRefFormatado}`;
         const cobrancaCriada = await criarCobrancaParaCliente(cliente, {
-          descricao: `Honorários Contábeis — ${mesRefFormatado}`,
+          descricao,
           valor: cliente["valor_honorario"],
           vencimento: loteVencimento,
           tipo: "honorario",
           mesReferencia: loteMesReferencia,
         });
-        resultados.push({ cliente, status: "ok", cobranca: cobrancaCriada });
+        let nota;
+        if (loteEmitirNota) {
+          // O WebISS exige pelo menos 5s entre chamadas (rate limit) — espera
+          // antes de cada emissão além da primeira desta rodada de lote.
+          if (notasEmitidas > 0) await new Promise(r => setTimeout(r, 5500));
+          try {
+            nota = await emitirNotaFiscalParaCobranca(cliente, cobrancaCriada, {
+              valor: cliente["valor_honorario"],
+              discriminacao: descricao,
+              competencia: `${loteMesReferencia}-01`,
+            });
+            notasEmitidas++;
+          } catch (e) {
+            nota = { erro: e.message };
+          }
+        }
+        resultados.push({ cliente, status: "ok", cobranca: cobrancaCriada, notaFiscal: nota });
       } catch (e) {
         resultados.push({ cliente, status: "erro", mensagem: e.message });
       }
@@ -304,7 +359,21 @@ export default function Cobrancas() {
         mesReferencia: form.mes_referencia,
       });
 
-      setSucesso("Cobrança gerada com sucesso!");
+      let avisoNota = "";
+      if (form.emitir_nota) {
+        try {
+          const nota = await emitirNotaFiscalParaCobranca(clienteForm, cobrancaCriada, {
+            valor: parseFloat(String(form.valor).replace(",", ".")),
+            discriminacao: form.descricao,
+            competencia: form.tipo === "honorario" && form.mes_referencia ? `${form.mes_referencia}-01` : undefined,
+          });
+          avisoNota = ` NFS-e nº ${nota.numero} emitida (homologação).`;
+        } catch (e) {
+          avisoNota = ` Cobrança gerada, mas a NFS-e falhou: ${e.message}`;
+        }
+      }
+
+      setSucesso(`Cobrança gerada com sucesso!${avisoNota}`);
       setModalAberto(false);
       carregarCobrancas();
 
@@ -455,17 +524,19 @@ export default function Cobrancas() {
     } catch (e) {
       console.warn("Não foi possível gerar o link do boleto para o WhatsApp:", e.message);
     }
+    const notaFiscal = await buscarNotaFiscalDaCobranca(cob.id);
     setProcessando(false);
 
-    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}` : ""}`;
+    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
   async function enviarEmailCobrancaSilencioso(cob) {
     const email = cob.clientes?.["email"] || "";
     if (!email) throw new Error("Cliente sem e-mail cadastrado.");
+    const notaFiscal = await buscarNotaFiscalDaCobranca(cob.id);
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
-    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\nCódigo de verificação: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
 
     let attachmentBase64 = null;
     try {
@@ -804,6 +875,13 @@ export default function Cobrancas() {
                     </div>
                   )}
 
+                  {/* Emitir NFS-e junto */}
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={form.emitir_nota} onChange={e => setForm(f => ({ ...f, emitir_nota: e.target.checked }))}
+                      className="w-4 h-4 accent-blue-600" />
+                    Emitir NFS-e junto (homologação — cliente precisa ter CNPJ e endereço cadastrados)
+                  </label>
+
                   {erro && <p className="text-red-500 text-sm">{erro}</p>}
                 </div>
 
@@ -875,6 +953,12 @@ export default function Cobrancas() {
                         ))}
                     </div>
 
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-3">
+                      <input type="checkbox" checked={loteEmitirNota} onChange={e => setLoteEmitirNota(e.target.checked)}
+                        className="w-4 h-4 accent-purple-600" />
+                      Emitir NFS-e junto (homologação — mais lento, ~5s entre cada nota por limite do WebISS)
+                    </label>
+
                     {erro && <p className="text-red-500 text-sm mt-3">{erro}</p>}
 
                     <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
@@ -908,6 +992,8 @@ export default function Cobrancas() {
                           ) : (
                             <>
                               <span className="text-xs text-green-600 mr-1">✅ {formatarValor(r.cobranca.valor)}</span>
+                              {r.notaFiscal?.numero && <span className="text-xs text-blue-600 mr-1" title={`Código de verificação: ${r.notaFiscal.codigoVerificacao}`}>📄 NFS-e {r.notaFiscal.numero}</span>}
+                              {r.notaFiscal?.erro && <span className="text-xs text-red-500 mr-1" title={r.notaFiscal.erro}>📄 nota falhou</span>}
                               {r.emailEnviado === true && <span className="text-xs text-indigo-600">✉️ enviado</span>}
                               {r.emailEnviado === false && <span className="text-xs text-red-500" title={r.emailErro}>✉️ falhou</span>}
                               {r.cliente.telefone && (

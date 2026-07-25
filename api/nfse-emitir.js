@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Apenas o gestor pode emitir NFS-e.' });
   }
 
-  const { clienteId, dados: dadosRecebidos, ambiente } = req.body || {};
+  const { clienteId, cobrancaId, dados: dadosRecebidos, ambiente } = req.body || {};
   if (!clienteId && !dadosRecebidos) {
     return res.status(400).json({ error: 'Informe "clienteId" ou "dados".' });
   }
@@ -114,6 +114,7 @@ export default async function handler(req, res) {
 
     const { error: insertError } = await admin.from('notas_fiscais').insert({
       cliente_id: clienteId || null,
+      cobranca_id: cobrancaId || null,
       ambiente: ambienteFinal,
       rps_numero: dados.rpsNumero,
       rps_serie: dados.rpsSerie,

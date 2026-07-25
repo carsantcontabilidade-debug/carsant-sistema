@@ -27,18 +27,21 @@ export default function PortalHonorarios() {
   const { cliente } = usePortalAuth()
   const [pagamentos, setPagamentos] = useState([])
   const [cobrancas, setCobrancas] = useState([])
+  const [notasFiscais, setNotasFiscais] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (cliente?.id) fetchDados() }, [cliente?.id])
 
   async function fetchDados() {
     setLoading(true)
-    const [{ data: p }, { data: c }] = await Promise.all([
+    const [{ data: p }, { data: c }, { data: n }] = await Promise.all([
       supabase.from('pagamentos_honorarios').select('*').eq('cliente_id', cliente.id).order('ano', { ascending: false }).order('mes', { ascending: false }).limit(12),
       supabase.from('cobrancas').select('*').eq('cliente_id', cliente.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('notas_fiscais').select('*').eq('cliente_id', cliente.id).eq('status', 'emitida').order('created_at', { ascending: false }).limit(50),
     ])
     setPagamentos(p || [])
     setCobrancas(c || [])
+    setNotasFiscais(n || [])
     setLoading(false)
   }
 
@@ -138,6 +141,30 @@ export default function PortalHonorarios() {
               <tr><td colSpan={4} className="text-center py-8 text-gray-500">
                 <AlertCircle className="w-5 h-5 mx-auto mb-1 text-gray-400" />
                 Nenhuma cobrança encontrada
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><h2 className="font-semibold text-gray-900">Notas Fiscais de Serviço (NFS-e)</h2></div>
+        <table className="table">
+          <thead><tr><th>Competência</th><th>Discriminação</th><th>Valor</th><th>Número</th><th>Código de verificação</th></tr></thead>
+          <tbody>
+            {notasFiscais.map(n => (
+              <tr key={n.id}>
+                <td>{fmtData(n.competencia)}</td>
+                <td>{n.discriminacao || '—'}</td>
+                <td>{fmtValor(n.valor_servicos)}</td>
+                <td>{n.numero_nfse || '—'}</td>
+                <td>{n.codigo_verificacao || '—'}</td>
+              </tr>
+            ))}
+            {notasFiscais.length === 0 && (
+              <tr><td colSpan={5} className="text-center py-8 text-gray-500">
+                <FileText className="w-5 h-5 mx-auto mb-1 text-gray-400" />
+                Nenhuma nota fiscal emitida ainda
               </td></tr>
             )}
           </tbody>
