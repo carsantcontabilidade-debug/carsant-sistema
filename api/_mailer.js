@@ -28,3 +28,32 @@ export async function enviarEmail({ to, subject, text, html }) {
     html: html || undefined,
   });
 }
+
+// SMTP dedicado para e-mails transacionais do Portal do Cliente
+// (convite/notificação) — o SMTP do UOL Host (usado nos boletos acima)
+// se mostrou pouco confiável para esse fluxo especificamente, rejeitando
+// entregas repetidas vezes mesmo em uso normal (não só em rajada de teste).
+// Usa a conta Gmail já existente da CARSANT, via senha de app.
+function buildTransportTransacional() {
+  return nodemailer.createTransport({
+    host: process.env.TRANSACTIONAL_SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.TRANSACTIONAL_SMTP_PORT || 587),
+    secure: false,
+    requireTLS: true,
+    auth: {
+      user: process.env.TRANSACTIONAL_SMTP_USER,
+      pass: process.env.TRANSACTIONAL_SMTP_PASS,
+    },
+  });
+}
+
+export async function enviarEmailTransacional({ to, subject, text, html }) {
+  const transporter = buildTransportTransacional();
+  return transporter.sendMail({
+    from: `"CARSANT Contabilidade" <${process.env.TRANSACTIONAL_SMTP_USER}>`,
+    to,
+    subject,
+    text: text || undefined,
+    html: html || undefined,
+  });
+}

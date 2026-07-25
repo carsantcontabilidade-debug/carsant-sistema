@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { enviarEmail } from './_mailer.js';
+import { enviarEmailTransacional } from './_mailer.js';
 
 // Convida um cliente para o Portal do Cliente. Só um gestor autenticado
 // pode chamar este endpoint. Usa a service role key (nunca exposta ao
@@ -7,9 +7,10 @@ import { enviarEmail } from './_mailer.js';
 // login do cliente e vincular clientes.auth_user_id.
 //
 // O e-mail do convite/recuperação é gerado pelo Supabase (admin.generateLink)
-// mas enviado pelo nosso próprio SMTP (UOL Host), e não pelo mailer padrão
-// do Supabase — que tem limite de 2 e-mails/hora e se mostrou pouco confiável
-// mesmo depois de configurar SMTP customizado no painel.
+// mas enviado pela conta Gmail já existente da CARSANT (via senha de app) —
+// nem o mailer padrão do Supabase (limite de 2/hora) nem o SMTP do UOL Host
+// (usado nos boletos) se mostraram confiáveis para esse fluxo especificamente,
+// rejeitando entregas para @gmail.com repetidas vezes mesmo em uso normal.
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
@@ -149,7 +150,7 @@ export default async function handler(req, res) {
   const { assunto, html } = corpoEmail({ nome: cliente.nome, link: linkData.properties.action_link, reenvio });
 
   try {
-    await enviarEmail({ to: cliente.email, subject: assunto, html });
+    await enviarEmailTransacional({ to: cliente.email, subject: assunto, html });
   } catch (err) {
     return res.status(502).json({ error: `Link gerado, mas falhou ao enviar o e-mail: ${err.message}` });
   }
