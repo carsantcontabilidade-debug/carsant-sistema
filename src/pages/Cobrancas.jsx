@@ -202,8 +202,12 @@ export default function Cobrancas() {
 
     return {
       ...cobSalva,
-      ...resultado,
       status: "gerada",
+      codigo_solicitacao: resultado.codigoSolicitacao,
+      nosso_numero: resultado.nossoNumero,
+      codigo_barras: resultado.codigoBarras,
+      linha_digitavel: resultado.linhaDigitavel,
+      pix_copia_cola: resultado.pixCopiaECola,
       clientes: cliente,
     };
   }
