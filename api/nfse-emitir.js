@@ -97,7 +97,10 @@ export default async function handler(req, res) {
       .order('rps_numero', { ascending: false })
       .limit(1)
       .maybeSingle();
-    dados.rpsNumero = (ultimaNota?.rps_numero || 0) + 1;
+    // Começa em 1000 quando não há histórico (não em 1): os primeiros testes
+    // de homologação, feitos antes desta tabela existir, já usaram RPS 1 e 2
+    // diretamente no WebISS, sem ficar registrados aqui.
+    dados.rpsNumero = (ultimaNota?.rps_numero || 999) + 1;
   }
 
   try {
