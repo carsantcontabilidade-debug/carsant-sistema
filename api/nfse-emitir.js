@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   try {
     const envelope = montarDpsAssinada({
       ...dados,
-      competencia: dados.competencia ? new Date(dados.competencia) : new Date(),
+      ambiente: ambienteFinal,
       dataEmissaoRps: new Date(),
     });
     const resultadoXml = await enviarGerarNfse(envelope, ambienteFinal);

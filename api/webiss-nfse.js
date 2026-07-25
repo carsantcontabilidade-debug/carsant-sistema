@@ -19,6 +19,17 @@ const CARSANT = {
   regimeEspecialTributacao: 6, // 6-ME/EPP (Simples Nacional, CARSANT é LTDA, não MEI)
 };
 
+// Em homologação, o cadastro de teste da CARSANT no WebISS usa um código de
+// município fictício ("9999999"/UF "HM"), não o código real de Feira de
+// Santana — confirmado emitindo uma NFS-e de teste direto pelo portal deles.
+// Usar o código real em homologação gera "Tipo de atividade incompatível com
+// o Município de Incidência" porque não bate com o cadastro de teste.
+const MUNICIPIO_HOMOLOGACAO = { codigo: '9999999' };
+
+function codigoMunicipioPrestador(ambiente) {
+  return ambiente === 'homologacao' ? MUNICIPIO_HOMOLOGACAO.codigo : CARSANT.codigoMunicipioIbge;
+}
+
 // Códigos de serviço (LC 116/2003) mapeados por atividade da CARSANT.
 // 1719 é o item usado de fato pela CARSANT (confirmado em NFS-e real já
 // emitida), não 1701 como assumido antes.
@@ -61,6 +72,11 @@ function formatarValor(v) {
 }
 
 function formatarData(date = new Date()) {
+  // Uma string "AAAA-MM-DD" (ex.: vinda de <input type="date">) já é uma
+  // data pura, sem componente de hora/fuso — repassar direto, sem conversão.
+  // Só um objeto Date (que representa um instante, tipicamente "agora") passa
+  // pela conversão de fuso abaixo.
+  if (typeof date === 'string') return date;
   // Usa o fuso de Brasília explicitamente: toISOString() é sempre UTC, e o
   // servidor (Vercel) roda em UTC — perto da meia-noite BRT, a data em UTC já
   // vira o dia seguinte, fazendo o WebISS rejeitar como "emissão no futuro".
@@ -83,6 +99,7 @@ export function montarInfDeclaracaoDps(dados) {
   const valorIss = dados.aliquota != null
     ? formatarValor(dados.valorServicos * dados.aliquota)
     : null;
+  const codigoMunicipio = codigoMunicipioPrestador(dados.ambiente);
 
   const tomadorXml = dados.tomador ? montarTomadorXml(dados.tomador) : '';
 
@@ -113,9 +130,9 @@ export function montarInfDeclaracaoDps(dados) {
       `<CodigoCnae>${dados.codigoCnae || CARSANT.codigoCnae}</CodigoCnae>` +
       `<CodigoTributacaoMunicipio>${dados.itemListaServico || ITENS_LISTA_SERVICO.CONTABILIDADE}</CodigoTributacaoMunicipio>` +
       `<Discriminacao>${escapeXml(dados.discriminacao)}</Discriminacao>` +
-      `<CodigoMunicipio>${CARSANT.codigoMunicipioIbge}</CodigoMunicipio>` +
+      `<CodigoMunicipio>${codigoMunicipio}</CodigoMunicipio>` +
       `<ExigibilidadeISS>1</ExigibilidadeISS>` +
-      `<MunicipioIncidencia>${CARSANT.codigoMunicipioIbge}</MunicipioIncidencia>` +
+      `<MunicipioIncidencia>${codigoMunicipio}</MunicipioIncidencia>` +
     `</Servico>` +
     `<Prestador>` +
       `<CpfCnpj><Cnpj>${CARSANT.cnpj}</Cnpj></CpfCnpj>` +
