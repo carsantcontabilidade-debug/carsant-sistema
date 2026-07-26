@@ -66,6 +66,9 @@ export default function Comunicacao() {
   const [enviandoChat, setEnviandoChat] = useState(false);
   const [colaboradores, setColaboradores] = useState([]);
   const [encaminharAberto, setEncaminharAberto] = useState(false);
+  const [novaConversaAberta, setNovaConversaAberta] = useState(false);
+  const [novaConversaForm, setNovaConversaForm] = useState({ cliente_id: "", assunto: "", setor: "financeiro", mensagem: "" });
+  const [criandoConversa, setCriandoConversa] = useState(false);
   const fimChatRef = useRef(null);
 
   useEffect(() => {
@@ -157,6 +160,50 @@ export default function Comunicacao() {
     await supabase.from("chat_conversas").update({ staff_lido_em: agora }).eq("id", conversaId);
     setConversas((atual) => atual.map((c) => (c.id === conversaId ? { ...c, staff_lido_em: agora } : c)));
     setConversaAtual((atual) => (atual?.id === conversaId ? { ...atual, staff_lido_em: agora } : atual));
+  }
+
+  function abrirNovaConversa() {
+    setNovaConversaForm({ cliente_id: "", assunto: "", setor: "financeiro", mensagem: "" });
+    setNovaConversaAberta(true);
+  }
+
+  async function criarConversaStaff(e) {
+    e.preventDefault();
+    if (!novaConversaForm.cliente_id || !novaConversaForm.assunto.trim() || !novaConversaForm.mensagem.trim()) return;
+    setCriandoConversa(true);
+    try {
+      const { data: conversa, error } = await supabase
+        .from("chat_conversas")
+        .insert({
+          cliente_id: novaConversaForm.cliente_id,
+          assunto: novaConversaForm.assunto.trim(),
+          setor: novaConversaForm.setor,
+          responsavel_atual_id: profile?.id,
+        })
+        .select("*, clientes(nome, telefone)")
+        .single();
+      if (error) throw error;
+
+      const { error: msgError } = await supabase.from("chat_mensagens").insert({
+        conversa_id: conversa.id,
+        origem: "escritorio",
+        autor_id: profile?.id,
+        autor_nome: profile?.nome,
+        mensagem: novaConversaForm.mensagem.trim(),
+      });
+      if (msgError) throw msgError;
+
+      notificarClienteChat(conversa);
+
+      setNovaConversaAberta(false);
+      setAba("chat");
+      await carregarConversas();
+      abrirConversa(conversa);
+    } catch (err) {
+      alert(`Não foi possível iniciar a conversa: ${err.message}`);
+    } finally {
+      setCriandoConversa(false);
+    }
   }
 
   async function enviarMensagemChat(e) {
@@ -360,9 +407,13 @@ export default function Comunicacao() {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-gray-800 text-lg">💬 Comunicação</h2>
-            {aba === "registro" && (
+            {aba === "registro" ? (
               <button onClick={() => abrirNovaComm()} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
                 + Nova
+              </button>
+            ) : (
+              <button onClick={abrirNovaConversa} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
+                + Nova conversa
               </button>
             )}
           </div>
@@ -634,6 +685,73 @@ export default function Comunicacao() {
           </>
         )}
       </div>
+
+      {/* Modal — Nova conversa (staff inicia o chat) */}
+      {novaConversaAberta && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-800">Nova conversa</h2>
+                <button onClick={() => setNovaConversaAberta(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              </div>
+              <form onSubmit={criarConversaStaff} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                  <select
+                    value={novaConversaForm.cliente_id}
+                    onChange={(e) => setNovaConversaForm((f) => ({ ...f, cliente_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Selecione o cliente...</option>
+                    {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Setor</label>
+                  <select
+                    value={novaConversaForm.setor}
+                    onChange={(e) => setNovaConversaForm((f) => ({ ...f, setor: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Object.entries(SETORES).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assunto *</label>
+                  <input
+                    type="text"
+                    value={novaConversaForm.assunto}
+                    onChange={(e) => setNovaConversaForm((f) => ({ ...f, assunto: e.target.value }))}
+                    placeholder="Ex: Documentos pendentes de julho"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mensagem *</label>
+                  <textarea
+                    value={novaConversaForm.mensagem}
+                    onChange={(e) => setNovaConversaForm((f) => ({ ...f, mensagem: e.target.value }))}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    required
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button type="submit" disabled={criandoConversa} className="flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+                    {criandoConversa ? "Enviando..." : "Iniciar conversa"}
+                  </button>
+                  <button type="button" onClick={() => setNovaConversaAberta(false)} className="border border-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {modalAberto && (
