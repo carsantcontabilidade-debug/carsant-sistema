@@ -301,7 +301,7 @@ export default function Clientes() {
           bairro: (placeholder ? null : cliente.bairro) || dados.bairro || null,
           cep: (placeholder ? null : cliente.cep) || dados.cep || null,
           uf: (placeholder ? null : cliente.uf) || dados.uf || null,
-          codigo_municipio_ibge: (placeholder ? null : cliente.codigo_municipio_ibge) || dados.codigo_municipio_ibge || null,
+          codigo_municipio_ibge: (placeholder ? null : cliente.codigo_municipio_ibge) || (dados.codigo_municipio_ibge != null ? String(dados.codigo_municipio_ibge) : null),
         }
 
         const { error } = await supabase.from('clientes').update(atualizacao).eq('id', cliente.id)
@@ -350,8 +350,12 @@ export default function Clientes() {
         if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
         const dados = await resp.json()
 
+        // A BrasilAPI devolve codigo_municipio_ibge como número; o
+        // cadastro guarda como texto — sem normalizar pra string dos
+        // dois lados, TUDO aparece como divergente mesmo quando é
+        // exatamente igual (2910800 número !== "2910800" texto).
         const ufDivergente = dados.uf && cliente.uf !== dados.uf
-        const municipioDivergente = dados.codigo_municipio_ibge && cliente.codigo_municipio_ibge !== dados.codigo_municipio_ibge
+        const municipioDivergente = dados.codigo_municipio_ibge != null && String(cliente.codigo_municipio_ibge) !== String(dados.codigo_municipio_ibge)
         if (ufDivergente || municipioDivergente) {
           encontradas.push({
             id: cliente.id,
@@ -359,7 +363,7 @@ export default function Clientes() {
             atual: `${cliente.uf || '—'} / ${cliente.codigo_municipio_ibge || '—'}`,
             correto: `${dados.uf} / ${dados.municipio} (${dados.codigo_municipio_ibge})`,
             atualizacao: {
-              uf: dados.uf, codigo_municipio_ibge: dados.codigo_municipio_ibge,
+              uf: dados.uf, codigo_municipio_ibge: String(dados.codigo_municipio_ibge),
               logradouro: dados.logradouro || null, numero_endereco: dados.numero || null,
               complemento: dados.complemento || null, bairro: dados.bairro || null, cep: dados.cep || null,
             },
