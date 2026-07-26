@@ -29,6 +29,7 @@ const PortalHome = lazy(() => import('./pages/portal/PortalHome'))
 const PortalHonorarios = lazy(() => import('./pages/portal/PortalHonorarios'))
 const PortalDocumentos = lazy(() => import('./pages/portal/PortalDocumentos'))
 const PortalComunicacao = lazy(() => import('./pages/portal/PortalComunicacao'))
+const PortalCertidoes = lazy(() => import('./pages/portal/PortalCertidoes'))
 
 function PageLoader() {
   return (
@@ -89,6 +90,7 @@ function PortalApp() {
             <Route path="honorarios" element={<PortalHonorarios />} />
             <Route path="documentos" element={<PortalDocumentos />} />
             <Route path="comunicacao" element={<PortalComunicacao />} />
+            <Route path="certidoes" element={<PortalCertidoes />} />
           </Route>
           <Route path="*" element={<Navigate to="/portal" />} />
         </Routes>

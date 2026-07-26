@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { usePortalAuth } from '../../contexts/PortalAuthContext'
-import { Wallet, FolderOpen, MessageCircle, Bell, Loader2 } from 'lucide-react'
+import { Wallet, FolderOpen, MessageCircle, ShieldCheck, Bell, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { pushSuportado, inscreverPush } from '../../lib/push'
 
@@ -45,6 +45,7 @@ export default function PortalHome() {
     { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças', desc: 'Veja seu status de pagamento e cobranças em aberto', secao: 'honorarios' },
     { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos', desc: 'Envie notas fiscais e baixe guias, folha e relatórios', secao: 'documentos' },
     { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação', desc: 'Veja o histórico de mensagens com o escritório', secao: 'comunicacao' },
+    { to: '/portal/certidoes', icon: ShieldCheck, label: 'Certidões', desc: 'Confira a situação das certidões negativas da sua empresa', secao: 'certidoes' },
   ]
 
   return (
@@ -69,7 +70,7 @@ export default function PortalHome() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-2 gap-4">
         {atalhos.map(a => {
           const contador = contadores[a.secao]
           return (

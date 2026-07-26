@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { usePortalAuth } from '../contexts/PortalAuthContext'
-import { Home, Wallet, FolderOpen, MessageCircle, LogOut, Menu, X } from 'lucide-react'
+import { Home, Wallet, FolderOpen, MessageCircle, ShieldCheck, LogOut, Menu, X } from 'lucide-react'
 
 const navItems = [
   { to: '/portal', icon: Home, label: 'Início', end: true },
   { to: '/portal/honorarios', icon: Wallet, label: 'Honorários & Cobranças', secao: 'honorarios' },
   { to: '/portal/documentos', icon: FolderOpen, label: 'Documentos', secao: 'documentos' },
   { to: '/portal/comunicacao', icon: MessageCircle, label: 'Comunicação', secao: 'comunicacao' },
+  { to: '/portal/certidoes', icon: ShieldCheck, label: 'Certidões', secao: 'certidoes' },
 ]
 
 export default function PortalLayout() {

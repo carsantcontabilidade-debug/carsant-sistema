@@ -3,13 +3,13 @@ import { supabase } from '../lib/supabase'
 
 const PortalAuthContext = createContext({})
 
-const SECOES = ['honorarios', 'documentos', 'comunicacao']
+const SECOES = ['honorarios', 'documentos', 'comunicacao', 'certidoes']
 
 export function PortalAuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [cliente, setCliente] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [contadores, setContadores] = useState({ honorarios: 0, documentos: 0, comunicacao: 0 })
+  const [contadores, setContadores] = useState({ honorarios: 0, documentos: 0, comunicacao: 0, certidoes: 0 })
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -40,18 +40,20 @@ export function PortalAuthProvider({ children }) {
     const { data: leituras } = await supabase.from('portal_leituras').select('secao, visitado_em').eq('cliente_id', clienteId)
     const visitadoEm = Object.fromEntries((leituras || []).map(l => [l.secao, l.visitado_em]))
 
-    const [cobrancasRes, notasRes, documentosRes, comunicacoesRes, chatRes] = await Promise.all([
+    const [cobrancasRes, notasRes, documentosRes, comunicacoesRes, chatRes, certidoesRes] = await Promise.all([
       contarNovos('cobrancas', clienteId, visitadoEm.honorarios),
       contarNovos('notas_fiscais', clienteId, visitadoEm.honorarios, { status: 'emitida' }),
       contarNovos('documentos_cliente', clienteId, visitadoEm.documentos, { origem: 'escritorio' }),
       contarNovos('comunicacoes', clienteId, visitadoEm.comunicacao),
       contarMensagensChatNovas(clienteId, visitadoEm.comunicacao),
+      contarNovos('certidoes', clienteId, visitadoEm.certidoes),
     ])
 
     setContadores({
       honorarios: cobrancasRes + notasRes,
       documentos: documentosRes,
       comunicacao: comunicacoesRes + chatRes,
+      certidoes: certidoesRes,
     })
   }
 
