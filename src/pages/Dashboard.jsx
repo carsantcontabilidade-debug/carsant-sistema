@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle,
-  CheckSquare, Users, Calendar, ArrowRight, Loader2, MessageCircle
+  CheckSquare, Users, Calendar, ArrowRight, Loader2, MessageCircle, ShieldAlert
 } from 'lucide-react'
+import { statusCertidao } from '../lib/certidoes'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -22,7 +23,7 @@ export default function Dashboard() {
 
   async function carregarDados() {
     setLoading(true)
-    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas] = await Promise.all([
+    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('tarefas').select('*'),
@@ -30,6 +31,7 @@ export default function Dashboard() {
       supabase.from('eventos').select('*').gte('data', format(hoje, 'yyyy-MM-dd')).order('data').limit(5),
       supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtual).eq('ano', anoAtual),
       supabase.from('chat_conversas').select('id, assunto, updated_at, ultimo_origem, staff_lido_em, clientes(nome)').eq('status', 'aberta'),
+      supabase.from('certidoes').select('cliente_id, tipo, data_validade, created_at'),
     ])
     setData({
       clientes: clientes.data || [],
@@ -39,6 +41,7 @@ export default function Dashboard() {
       eventos: eventos.data || [],
       pagamentos: pagamentos.data || [],
       conversas: conversas.data || [],
+      certidoes: certidoes.data || [],
     })
     setLoading(false)
   }
@@ -49,7 +52,7 @@ export default function Dashboard() {
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas } = data
+  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes } = data
   const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
   const hojeStr = format(hoje, 'yyyy-MM-dd')
   const hoje7Str = format(hoje7, 'yyyy-MM-dd')
@@ -57,6 +60,18 @@ export default function Dashboard() {
   const conversasNaoLidas = conversas.filter(
     (c) => c.ultimo_origem === 'cliente' && (!c.staff_lido_em || new Date(c.staff_lido_em) < new Date(c.updated_at))
   )
+
+  // Só a certidão mais recente de cada cliente+tipo conta pro alerta.
+  const certidoesAtuais = {}
+  for (const c of certidoes) {
+    const chave = `${c.cliente_id}|${c.tipo}`
+    const atual = certidoesAtuais[chave]
+    if (!atual || (c.data_validade || c.created_at) > (atual.data_validade || atual.created_at)) certidoesAtuais[chave] = c
+  }
+  const certidoesVencidasOuVencendo = Object.values(certidoesAtuais).filter((c) => {
+    const s = statusCertidao(c.data_validade)
+    return s === 'vencida' || s === 'vencendo'
+  })
 
   // KPIs
   const totalHonorarios = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
@@ -110,7 +125,7 @@ export default function Dashboard() {
       )}
 
       {/* Alertas */}
-      {(tarefasAtrasadas.length > 0 || inadimplentes.length > 0) && (
+      {(tarefasAtrasadas.length > 0 || inadimplentes.length > 0 || certidoesVencidasOuVencendo.length > 0) && (
         <div className="space-y-2 mb-6">
           {tarefasAtrasadas.length > 0 && (
             <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -126,6 +141,15 @@ export default function Dashboard() {
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span>{inadimplentes.length} cliente{inadimplentes.length > 1 ? 's' : ''} com honorário em atraso</span>
               <button onClick={() => navigate('/honorarios')} className="ml-auto text-yellow-700 hover:text-yellow-900 font-medium flex items-center gap-1">
+                Ver <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          {certidoesVencidasOuVencendo.length > 0 && (
+            <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-800">
+              <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+              <span>{certidoesVencidasOuVencendo.length} certidão{certidoesVencidasOuVencendo.length > 1 ? 'ões' : ''} vencida{certidoesVencidasOuVencendo.length > 1 ? 's' : ''} ou vencendo</span>
+              <button onClick={() => navigate('/certidoes')} className="ml-auto text-orange-700 hover:text-orange-900 font-medium flex items-center gap-1">
                 Ver <ArrowRight className="w-3 h-3" />
               </button>
             </div>

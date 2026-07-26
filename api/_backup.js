@@ -19,6 +19,7 @@ const TABELAS_BACKUP = [
   'chat_conversas',
   'chat_mensagens',
   'portal_leituras',
+  'certidoes',
 ];
 
 export async function gerarBackup(admin) {

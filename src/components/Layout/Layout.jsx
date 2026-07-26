@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings
+  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings, ShieldCheck
 } from 'lucide-react'
 
 const navItems = [
@@ -28,6 +28,7 @@ const navItems = [
   { to: '/agenda',      icon: Calendar,   label: 'Agenda',      somenteGestor: false },
   { to: '/comunicacao', icon: Headphones, label: 'Comunicação', somenteGestor: false },
   { to: '/documentos', icon: FolderOpen, label: 'Documentos', somenteGestor: false },
+  { to: '/certidoes', icon: ShieldCheck, label: 'Certidões', somenteGestor: false },
   { to: '/configuracoes', icon: Settings, label: 'Configurações', somenteGestor: true },
 ]
 export default function Layout() {
