@@ -1,21 +1,34 @@
 import { createClient } from '@supabase/supabase-js';
 import { buscarCertidaoMunicipalFeiraDeSantana } from './_certidao-municipal.js';
+import { buscarCertidaoMunicipalEContrib, MUNICIPIOS_ECONTRIB } from './_certidao-municipal-econtrib.js';
 import { buscarCertidaoEstadualBahia } from './_certidao-estadual.js';
 
-// Emissão automática de certidão (staff-only). "municipal" (Feira de
-// Santana) e "estadual" (SEFAZ-BA) estão automatizados — os outros
-// tipos continuam manuais porque os portais oficiais usam captcha
-// (FGTS, Trabalhista, Federal) ou têm fluxo assíncrono de protocolo
-// (Falência/TJBA).
+// Emissão automática de certidão (staff-only). Cada município/estado
+// pode usar um portal (e código) diferente — por isso o "provedor" é
+// escolhido em runtime a partir do código IBGE do município ou da UF
+// do cliente, não fixo por tipo. Tipos/lugares sem provedor aqui
+// continuam manuais (captcha ou fluxo assíncrono de protocolo).
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const TIPOS_AUTOMATIZADOS = {
-  municipal: buscarCertidaoMunicipalFeiraDeSantana,
-  estadual: buscarCertidaoEstadualBahia,
-};
+const FEIRA_DE_SANTANA_IBGE = '2910800';
+
+function resolverProvedorMunicipal(codigoMunicipioIbge) {
+  if (!codigoMunicipioIbge) return null;
+  if (codigoMunicipioIbge === FEIRA_DE_SANTANA_IBGE) return (cnpj) => buscarCertidaoMunicipalFeiraDeSantana(cnpj);
+  if (MUNICIPIOS_ECONTRIB[codigoMunicipioIbge]) {
+    const slug = MUNICIPIOS_ECONTRIB[codigoMunicipioIbge];
+    return (cnpj) => buscarCertidaoMunicipalEContrib(cnpj, slug);
+  }
+  return null;
+}
+
+function resolverProvedorEstadual(uf) {
+  if (uf === 'BA') return buscarCertidaoEstadualBahia;
+  return null;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,8 +41,7 @@ export default async function handler(req, res) {
   }
 
   const { clienteId, tipo } = req.body || {};
-  const buscar = TIPOS_AUTOMATIZADOS[tipo];
-  if (!clienteId || !buscar) {
+  if (!clienteId || (tipo !== 'municipal' && tipo !== 'estadual')) {
     return res.status(400).json({ error: 'Este tipo de certidão ainda não tem emissão automática.' });
   }
 
@@ -51,9 +63,21 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Apenas a equipe pode emitir certidões.' });
   }
 
-  const { data: cliente } = await admin.from('clientes').select('id, cnpj').eq('id', clienteId).single();
+  const { data: cliente } = await admin.from('clientes').select('id, cnpj, uf, codigo_municipio_ibge').eq('id', clienteId).single();
   if (!cliente?.cnpj) {
     return res.status(400).json({ error: 'Este cliente não tem CNPJ cadastrado.' });
+  }
+
+  const buscar = tipo === 'municipal'
+    ? resolverProvedorMunicipal(cliente.codigo_municipio_ibge)
+    : resolverProvedorEstadual(cliente.uf);
+
+  if (!buscar) {
+    return res.status(400).json({
+      error: tipo === 'municipal'
+        ? 'Não há emissão automática para o município deste cliente ainda.'
+        : 'Não há emissão automática para o estado deste cliente ainda.',
+    });
   }
 
   let resultado;
