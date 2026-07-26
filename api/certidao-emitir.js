@@ -1,10 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { buscarCertidaoMunicipalFeiraDeSantana } from './_certidao-municipal.js';
+import { buscarCertidaoEstadualBahia } from './_certidao-estadual.js';
 
-// Emissão automática de certidão (staff-only). Hoje só "municipal"
-// (Feira de Santana) está automatizado — os outros tipos continuam
-// manuais porque os portais oficiais usam captcha (FGTS, Trabalhista,
-// Federal) ou têm fluxo assíncrono de protocolo (Falência/TJBA).
+// Emissão automática de certidão (staff-only). "municipal" (Feira de
+// Santana) e "estadual" (SEFAZ-BA) estão automatizados — os outros
+// tipos continuam manuais porque os portais oficiais usam captcha
+// (FGTS, Trabalhista, Federal) ou têm fluxo assíncrono de protocolo
+// (Falência/TJBA).
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
@@ -12,6 +14,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const TIPOS_AUTOMATIZADOS = {
   municipal: buscarCertidaoMunicipalFeiraDeSantana,
+  estadual: buscarCertidaoEstadualBahia,
 };
 
 export default async function handler(req, res) {
@@ -64,12 +67,16 @@ export default async function handler(req, res) {
     return res.status(200).json({ sucesso: false, motivo: resultado.motivo });
   }
 
-  const nomeArquivo = `certidao-${tipo}-${resultado.dataEmissao || 'emitida'}.html`;
-  const storagePath = `${clienteId}/${tipo}_auto_${Date.now()}.html`;
+  const ehPdf = !!resultado.pdfBuffer;
+  const extensao = ehPdf ? 'pdf' : 'html';
+  const nomeArquivo = `certidao-${tipo}-${resultado.dataEmissao || 'emitida'}.${extensao}`;
+  const storagePath = `${clienteId}/${tipo}_auto_${Date.now()}.${extensao}`;
+  const conteudo = ehPdf ? resultado.pdfBuffer : Buffer.from(resultado.html, 'utf-8');
+  const contentType = ehPdf ? 'application/pdf' : 'text/html; charset=utf-8';
 
   const { error: uploadError } = await admin.storage
     .from('certidoes')
-    .upload(storagePath, Buffer.from(resultado.html, 'utf-8'), { contentType: 'text/html; charset=utf-8' });
+    .upload(storagePath, conteudo, { contentType });
   if (uploadError) {
     return res.status(500).json({ error: `Certidão obtida, mas falhou ao salvar o arquivo: ${uploadError.message}` });
   }

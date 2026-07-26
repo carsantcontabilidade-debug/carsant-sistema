@@ -4,11 +4,11 @@ import { sanitizarNomeArquivo } from '../lib/storage'
 import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais } from '../lib/certidoes'
 import { Loader2, Search, FileText, Zap } from 'lucide-react'
 
-// Só o Municipal (Feira de Santana) tem emissão automática hoje —
-// confirmado sem captcha/login. Os demais usam captcha (FGTS,
-// Trabalhista, Federal) ou fluxo assíncrono de protocolo (Falência),
-// então continuam manuais.
-const TIPOS_AUTOMATIZAVEIS = ['municipal']
+// Municipal (Feira de Santana) e Estadual (SEFAZ-BA) têm emissão
+// automática hoje — confirmado sem captcha/login. Os demais usam
+// captcha (FGTS, Trabalhista, Federal) ou fluxo assíncrono de
+// protocolo (Falência), então continuam manuais.
+const TIPOS_AUTOMATIZAVEIS = ['municipal', 'estadual']
 
 function fmtData(d) {
   if (!d) return ''
