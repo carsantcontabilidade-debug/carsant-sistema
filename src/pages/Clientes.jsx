@@ -48,6 +48,10 @@ export default function Clientes() {
   const [progressoEnderecos, setProgressoEnderecos] = useState(null)
   const [distribuicao, setDistribuicao] = useState(null)
   const [mostrarDistribuicao, setMostrarDistribuicao] = useState(false)
+  const [revisando, setRevisando] = useState(false)
+  const [progressoRevisao, setProgressoRevisao] = useState(null)
+  const [divergencias, setDivergencias] = useState(null)
+  const [corrigindoId, setCorrigindoId] = useState(null)
   const [colabs, setColabs] = useState([])
 
   useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
@@ -71,7 +75,7 @@ export default function Clientes() {
       tipo: c.tipo || 'recorrente', obrigacoes: c.obrigacoes || [],
       logradouro: c.logradouro || '', numero_endereco: c.numero_endereco || '',
       complemento: c.complemento || '', bairro: c.bairro || '', cep: c.cep || '',
-      uf: c.uf || 'BA', codigo_municipio_ibge: c.codigo_municipio_ibge || '2910800',
+      uf: c.uf || '', codigo_municipio_ibge: c.codigo_municipio_ibge || '',
     })
     const sel = {}
     ;(c.obrigacoes || []).forEach(o => { sel[o.id] = { sel: true, resp: o.resp || colabs[0] || '' } })
@@ -324,6 +328,64 @@ export default function Clientes() {
     )
   }
 
+  // Reconfere TODOS os clientes com CNPJ contra a Receita Federal
+  // (não só quem está sem endereço) — sinaliza divergência sem
+  // sobrescrever nada sozinho, porque o dado atual pode ter sido
+  // corrigido manualmente de propósito.
+  async function revisarTodosEnderecos() {
+    const comCnpj = clientes.filter((c) => c.cnpj?.replace(/\D/g, '').length === 14)
+    if (!confirm(`Isso vai reconferir o endereço de todos os ${comCnpj.length} clientes com CNPJ contra a Receita Federal. Pode demorar alguns minutos (limite da API pública). Continuar?`)) return
+
+    setRevisando(true)
+    setDivergencias(null)
+    const encontradas = []
+    const falhas = []
+
+    for (let i = 0; i < comCnpj.length; i++) {
+      const cliente = comCnpj[i]
+      setProgressoRevisao({ atual: i + 1, total: comCnpj.length })
+      try {
+        const cnpjLimpo = cliente.cnpj.replace(/\D/g, '')
+        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
+        if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
+        const dados = await resp.json()
+
+        const ufDivergente = dados.uf && cliente.uf !== dados.uf
+        const municipioDivergente = dados.codigo_municipio_ibge && cliente.codigo_municipio_ibge !== dados.codigo_municipio_ibge
+        if (ufDivergente || municipioDivergente) {
+          encontradas.push({
+            id: cliente.id,
+            nome: cliente.nome,
+            atual: `${cliente.uf || '—'} / ${cliente.codigo_municipio_ibge || '—'}`,
+            correto: `${dados.uf} / ${dados.municipio} (${dados.codigo_municipio_ibge})`,
+            atualizacao: {
+              uf: dados.uf, codigo_municipio_ibge: dados.codigo_municipio_ibge,
+              logradouro: dados.logradouro || null, numero_endereco: dados.numero || null,
+              complemento: dados.complemento || null, bairro: dados.bairro || null, cep: dados.cep || null,
+            },
+          })
+        }
+      } catch (err) {
+        falhas.push(`${cliente.nome}: ${err.message}`)
+      }
+      await new Promise((r) => setTimeout(r, 400))
+    }
+
+    setRevisando(false)
+    setProgressoRevisao(null)
+    setDivergencias(encontradas)
+    if (falhas.length) alert(`Revisão concluída, mas ${falhas.length} cliente(s) falharam na consulta:\n${falhas.join('\n')}`)
+  }
+
+  async function corrigirDivergencia(divergencia) {
+    setCorrigindoId(divergencia.id)
+    const { error } = await supabase.from('clientes').update(divergencia.atualizacao).eq('id', divergencia.id)
+    setCorrigindoId(null)
+    if (error) { alert(`Não foi possível corrigir: ${error.message}`); return }
+    setDivergencias((atual) => atual.filter((d) => d.id !== divergencia.id))
+    fetchClientes()
+  }
+
   async function verDistribuicao() {
     if (mostrarDistribuicao) { setMostrarDistribuicao(false); return }
     setMostrarDistribuicao(true)
@@ -385,12 +447,49 @@ export default function Clientes() {
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> {progressoEnderecos ? `${progressoEnderecos.atual}/${progressoEnderecos.total}` : '...'}</>
                 : <><MapPin className="w-4 h-4" /> Completar endereços</>}
             </button>
+            <button
+              onClick={revisarTodosEnderecos}
+              disabled={revisando}
+              className="btn-secondary gap-1.5"
+              title="Reconfere TODOS os clientes (não só os vazios) contra a Receita Federal"
+            >
+              {revisando
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {progressoRevisao ? `${progressoRevisao.atual}/${progressoRevisao.total}` : '...'}</>
+                : <>🔍 Revisar todos</>}
+            </button>
             <button onClick={abrirNovo} className="btn-primary">
               <Plus className="w-4 h-4" /> Novo cliente
             </button>
           </div>
         )}
       </div>
+
+      {divergencias && (
+        <div className="card p-4 mb-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            {divergencias.length === 0 ? '✅ Nenhuma divergência encontrada' : `⚠️ ${divergencias.length} divergência(s) encontrada(s)`}
+          </h3>
+          {divergencias.length > 0 && (
+            <div className="space-y-2">
+              {divergencias.map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3 text-sm border-t border-gray-100 pt-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-800 truncate">{d.nome}</div>
+                    <div className="text-xs text-gray-500">Cadastrado: {d.atual} · Receita Federal: {d.correto}</div>
+                  </div>
+                  <button
+                    onClick={() => corrigirDivergencia(d)}
+                    disabled={corrigindoId === d.id}
+                    className="btn-secondary btn-sm flex-shrink-0"
+                  >
+                    {corrigindoId === d.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Corrigir'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mostrarDistribuicao && (
         <div className="card p-4 mb-5">

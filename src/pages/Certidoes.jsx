@@ -1,14 +1,32 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { sanitizarNomeArquivo } from '../lib/storage'
-import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais, PORTAL_OFICIAL } from '../lib/certidoes'
+import {
+  TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais,
+  PORTAL_OFICIAL, MUNICIPIOS_AUTOMATIZADOS, ESTADOS_AUTOMATIZADOS,
+  PORTAL_OFICIAL_ESTADUAL, PORTAL_OFICIAL_MUNICIPAL,
+} from '../lib/certidoes'
 import { Loader2, Search, FileText, Zap, ExternalLink } from 'lucide-react'
 
-// Municipal (Feira de Santana) e Estadual (SEFAZ-BA) têm emissão
-// automática hoje — confirmado sem captcha/login. Os demais usam
-// captcha (FGTS, Trabalhista, Federal) ou fluxo assíncrono de
-// protocolo (Falência), então continuam manuais.
-const TIPOS_AUTOMATIZAVEIS = ['municipal', 'estadual']
+// Municipal e Estadual só têm emissão automática de verdade pra alguns
+// lugares específicos (ver MUNICIPIOS_AUTOMATIZADOS/ESTADOS_AUTOMATIZADOS
+// em lib/certidoes.js) — checar por cliente, não só pelo tipo, senão o
+// botão de raio aparece pra cidade que não tem suporte nenhum.
+function temAutomacao(cliente, tipo) {
+  if (tipo === 'municipal') return MUNICIPIOS_AUTOMATIZADOS.includes(cliente.codigo_municipio_ibge)
+  if (tipo === 'estadual') return ESTADOS_AUTOMATIZADOS.includes(cliente.uf)
+  return false
+}
+
+// Link de apoio (abrir portal oficial) pro cliente+tipo, quando não
+// existe automação — igual ao padrão já usado em Federal/FGTS/
+// Trabalhista/Falência.
+function portalDeApoio(cliente, tipo) {
+  if (PORTAL_OFICIAL[tipo]) return PORTAL_OFICIAL[tipo]
+  if (tipo === 'municipal') return PORTAL_OFICIAL_MUNICIPAL[cliente.codigo_municipio_ibge]
+  if (tipo === 'estadual') return PORTAL_OFICIAL_ESTADUAL[cliente.uf]
+  return null
+}
 
 function fmtData(d) {
   if (!d) return ''
@@ -31,7 +49,7 @@ export default function Certidoes() {
   async function carregar() {
     setLoading(true)
     const [clientesRes, certidoesRes] = await Promise.all([
-      supabase.from('clientes').select('id, nome, regime, cnpj').order('nome'),
+      supabase.from('clientes').select('id, nome, regime, cnpj, uf, codigo_municipio_ibge').order('nome'),
       supabase.from('certidoes').select('*'),
     ])
     setClientes(clientesRes.data || [])
@@ -118,7 +136,7 @@ export default function Certidoes() {
     if (cliente.cnpj) {
       try { await navigator.clipboard.writeText(cliente.cnpj.replace(/\D/g, '')) } catch { /* clipboard pode não estar disponível */ }
     }
-    window.open(PORTAL_OFICIAL[tipo], '_blank')
+    window.open(portalDeApoio(cliente, tipo), '_blank')
   }
 
   async function baixarAnexo(atual) {
@@ -193,7 +211,7 @@ export default function Certidoes() {
                   const atual = certidoesPorCliente[c.id]?.[t.id]
                   const status = statusCertidao(atual?.data_validade)
                   const chave = `${c.id}|${t.id}`
-                  const automatizavel = TIPOS_AUTOMATIZAVEIS.includes(t.id)
+                  const automatizavel = temAutomacao(c, t.id)
                   return (
                     <td key={t.id} className="px-3 py-2.5 text-center">
                       <div className="inline-flex items-center gap-1">
@@ -245,7 +263,7 @@ export default function Certidoes() {
                 </button>
               )}
 
-              {PORTAL_OFICIAL[modal.tipo] && (
+              {!temAutomacao(modal.cliente, modal.tipo) && portalDeApoio(modal.cliente, modal.tipo) && (
                 <button
                   onClick={() => abrirPortalOficial(modal.cliente, modal.tipo)}
                   className="w-full flex items-center justify-center gap-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-lg px-3 py-2 hover:bg-gray-100 mb-4"
