@@ -20,6 +20,8 @@ const Comunicacao = lazy(() => import('./pages/Comunicacao'))
 const Cobrancas = lazy(() => import('./pages/Cobrancas'))
 const NfseEmitir = lazy(() => import('./pages/NfseEmitir'))
 const Documentos = lazy(() => import('./pages/Documentos'))
+const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const DefinirSenha = lazy(() => import('./pages/DefinirSenha'))
 const PortalLogin = lazy(() => import('./pages/portal/PortalLogin'))
 const PortalDefinirSenha = lazy(() => import('./pages/portal/PortalDefinirSenha'))
 const PortalHome = lazy(() => import('./pages/portal/PortalHome'))
@@ -99,6 +101,7 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/definir-senha" element={<DefinirSenha />} />
         <Route path="/portal/*" element={<PortalApp />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" />} />
@@ -114,6 +117,7 @@ export default function App() {
           <Route path="documentos" element={<Documentos />} />
           <Route path="cobrancas" element={<GestorRoute><Cobrancas /></GestorRoute>} />
           <Route path="nfse-emitir" element={<GestorRoute><NfseEmitir /></GestorRoute>} />
+          <Route path="configuracoes" element={<GestorRoute><Configuracoes /></GestorRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>

@@ -47,7 +47,7 @@ function buildTransportTransacional() {
   });
 }
 
-export async function enviarEmailTransacional({ to, subject, text, html }) {
+export async function enviarEmailTransacional({ to, subject, text, html, attachments }) {
   const transporter = buildTransportTransacional();
   return transporter.sendMail({
     from: `"CARSANT Contabilidade" <${process.env.TRANSACTIONAL_SMTP_USER}>`,
@@ -55,5 +55,6 @@ export async function enviarEmailTransacional({ to, subject, text, html }) {
     subject,
     text: text || undefined,
     html: html || undefined,
+    attachments: attachments || undefined,
   });
 }
