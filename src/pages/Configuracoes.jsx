@@ -58,7 +58,7 @@ export default function Configuracoes() {
     setBaixandoBackup(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const resp = await fetch('/api/backup-export', {
+      const resp = await fetch('/api/backup', {
         headers: { Authorization: `Bearer ${session?.access_token}` },
       })
       if (!resp.ok) {
