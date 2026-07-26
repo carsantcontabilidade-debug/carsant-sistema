@@ -35,6 +35,7 @@ export default function Atendimento() {
   const [emContexto, setEmContexto] = useState('')
   const [emailGerado, setEmailGerado] = useState('')
   const [gerandoEmail, setGerandoEmail] = useState(false)
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
   const [colabs, setColabs] = useState([])
 
   useEffect(() => { fetchDados(); buscarColaboradores().then(setColabs) }, [])
@@ -90,6 +91,34 @@ export default function Atendimento() {
       setEmailGerado(`Não foi possível gerar o e-mail: ${err.message}`)
     }
     setGerandoEmail(false)
+  }
+
+  async function enviarEmailGerado() {
+    const cliente = clientes.find(c => c.nome === emCliente)
+    if (!cliente?.email) {
+      alert('Cliente sem e-mail cadastrado.')
+      return
+    }
+    const templateInfo = TEMPLATES.find(t => t.id === template)
+    setEnviandoEmail(true)
+    try {
+      const resp = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: cliente.email,
+          subject: `CARSANT Contabilidade — ${templateInfo?.label.replace(/^[^\w]+/, '') || 'Mensagem'}`,
+          text: emailGerado,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.detail || data.error || 'Falha ao enviar e-mail')
+      alert(`E-mail enviado para ${cliente.email}.`)
+    } catch (err) {
+      alert(`Erro ao enviar e-mail: ${err.message}`)
+    } finally {
+      setEnviandoEmail(false)
+    }
   }
 
   const filtrados = atendimentos.filter(a =>
@@ -181,7 +210,10 @@ export default function Atendimento() {
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">{emailGerado}</div>
                   <div className="flex gap-2 mt-3">
                     <button onClick={() => navigator.clipboard.writeText(emailGerado)} className="btn-secondary btn-sm"><Copy className="w-3.5 h-3.5"/> Copiar</button>
-                    <button onClick={() => { const dest = clientes.find(c=>c.nome===emCliente)?.email||''; window.open(`mailto:${dest}?body=${encodeURIComponent(emailGerado)}`) }} className="btn-secondary btn-sm"><Mail className="w-3.5 h-3.5"/> Abrir no e-mail</button>
+                    <button onClick={enviarEmailGerado} disabled={enviandoEmail} className="btn-secondary btn-sm">
+                      {enviandoEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Mail className="w-3.5 h-3.5"/>}
+                      {enviandoEmail ? 'Enviando...' : 'Enviar e-mail'}
+                    </button>
                   </div>
                 </div>
               )}
