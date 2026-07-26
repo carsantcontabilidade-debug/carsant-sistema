@@ -23,6 +23,23 @@ const OBR_CATALOG = [
 
 const REGIMES = ['MEI','Simples Nacional','Lucro Presumido','Lucro Real','Entidade / Assoc.','Partido Político']
 
+// "Failed to fetch" (falha de rede, sem resposta HTTP nenhuma) é
+// tipicamente transitório numa varredura longa contra a API pública —
+// tenta de novo antes de desistir, em vez de exigir rodar tudo de novo.
+async function buscarCnpjComRetry(cnpjLimpo, tentativas = 3) {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
+      if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
+      return await resp.json()
+    } catch (err) {
+      const ultimaTentativa = i === tentativas - 1
+      if (ultimaTentativa || err.message !== 'Failed to fetch') throw err
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
+    }
+  }
+}
+
 const emptyForm = {
   nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
   telefone: '', email: '', email2: '', tipo: 'recorrente', obrigacoes: [],
@@ -286,9 +303,7 @@ export default function Clientes() {
       setProgressoEnderecos({ atual: i + 1, total: semEndereco.length })
       try {
         const cnpjLimpo = cliente.cnpj.replace(/\D/g, '')
-        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
-        if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
-        const dados = await resp.json()
+        const dados = await buscarCnpjComRetry(cnpjLimpo)
         // Se o endereço atual for só o placeholder do formulário, o
         // valor vindo da Receita Federal manda — não é "manter o que
         // já tinha", porque o que tinha não era um dado real.
@@ -346,9 +361,7 @@ export default function Clientes() {
       setProgressoRevisao({ atual: i + 1, total: comCnpj.length })
       try {
         const cnpjLimpo = cliente.cnpj.replace(/\D/g, '')
-        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
-        if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
-        const dados = await resp.json()
+        const dados = await buscarCnpjComRetry(cnpjLimpo)
 
         // A BrasilAPI devolve codigo_municipio_ibge como número; o
         // cadastro guarda como texto — sem normalizar pra string dos
