@@ -12,6 +12,16 @@ export const TIPOS_CERTIDAO = [
   { id: 'falencia', label: 'Falência/Concordata' },
 ];
 
+// Portais que não têm emissão automática (captcha ou protocolo
+// assíncrono) — link direto só para agilizar o preenchimento manual,
+// sem fingir que é automático.
+export const PORTAL_OFICIAL = {
+  federal: 'https://servicos.receitafederal.gov.br/servico/certidoes/',
+  trabalhista: 'https://cndt-certidao.tst.jus.br/',
+  fgts: 'https://consulta-crf.caixa.gov.br/',
+  falencia: 'https://esaj.tjba.jus.br/esaj/portal.do?servico=810000',
+};
+
 const DIAS_AVISO_VENCIMENTO = 15;
 
 export function statusCertidao(dataValidade) {

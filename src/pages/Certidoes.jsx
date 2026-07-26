@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { sanitizarNomeArquivo } from '../lib/storage'
-import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais } from '../lib/certidoes'
-import { Loader2, Search, FileText, Zap } from 'lucide-react'
+import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais, PORTAL_OFICIAL } from '../lib/certidoes'
+import { Loader2, Search, FileText, Zap, ExternalLink } from 'lucide-react'
 
 // Municipal (Feira de Santana) e Estadual (SEFAZ-BA) têm emissão
 // automática hoje — confirmado sem captcha/login. Os demais usam
@@ -112,6 +112,13 @@ export default function Certidoes() {
     } finally {
       setEmitindo(null)
     }
+  }
+
+  async function abrirPortalOficial(cliente, tipo) {
+    if (cliente.cnpj) {
+      try { await navigator.clipboard.writeText(cliente.cnpj.replace(/\D/g, '')) } catch { /* clipboard pode não estar disponível */ }
+    }
+    window.open(PORTAL_OFICIAL[tipo], '_blank')
   }
 
   async function baixarAnexo(atual) {
@@ -233,8 +240,17 @@ export default function Certidoes() {
               </div>
 
               {modal.atual?.storage_path && (
-                <button onClick={() => baixarAnexo(modal.atual)} className="flex items-center gap-1.5 text-xs text-blue-700 underline mb-4">
+                <button onClick={() => baixarAnexo(modal.atual)} className="flex items-center gap-1.5 text-xs text-blue-700 underline mb-2">
                   <FileText className="w-3.5 h-3.5" /> Ver certidão atual anexada
+                </button>
+              )}
+
+              {PORTAL_OFICIAL[modal.tipo] && (
+                <button
+                  onClick={() => abrirPortalOficial(modal.cliente, modal.tipo)}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-lg px-3 py-2 hover:bg-gray-100 mb-4"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Abrir portal oficial (CNPJ copiado)
                 </button>
               )}
 
