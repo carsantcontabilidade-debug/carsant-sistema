@@ -7,7 +7,10 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// gemini-2.0-flash não tem cota gratuita disponível para este projeto
+// (confirmado no painel do Google AI Studio — RPM 0/0); gemini-2.5-flash-lite
+// tem a maior cota gratuita real entre os modelos de texto (10 RPM).
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
 const PROMPTS = {
   cobranca: (cliente, contexto) => `Escreva um e-mail profissional e cordial de cobrança de honorário contábil para o cliente "${cliente || '[Cliente]'}". ${contexto}. Assine como CARSANT CONTABILIDADE — Feira de Santana, BA.`,
