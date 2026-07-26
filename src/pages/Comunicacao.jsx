@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -22,8 +23,13 @@ const CANAL_ICONES = {
   presencial: "🤝",
 };
 
+function naoLida(c) {
+  return c.ultimo_origem === "cliente" && (!c.staff_lido_em || new Date(c.staff_lido_em) < new Date(c.updated_at));
+}
+
 export default function Comunicacao() {
   const { profile } = useAuth();
+  const [searchParams] = useSearchParams();
   const [clientes, setClientes] = useState([]);
   const [comunicacoes, setComunicacoes] = useState([]);
   const [clienteSelecionado, setClienteSelecionado] = useState(null);
@@ -66,6 +72,19 @@ export default function Comunicacao() {
     carregarClientes();
     carregarColaboradores();
   }, []);
+
+  // Deep-link do e-mail de aviso (?conversa=ID): abre direto na conversa.
+  useEffect(() => {
+    const conversaId = searchParams.get("conversa");
+    if (!conversaId) return;
+    setAba("chat");
+    supabase
+      .from("chat_conversas")
+      .select("*, clientes(nome, telefone)")
+      .eq("id", conversaId)
+      .single()
+      .then(({ data }) => { if (data) abrirConversa(data); });
+  }, [searchParams]);
 
   useEffect(() => {
     carregarComunicacoes(clienteSelecionado?.id || null);
@@ -130,6 +149,14 @@ export default function Comunicacao() {
   function abrirConversa(conv) {
     setConversaAtual(conv);
     setEncaminharAberto(false);
+    if (naoLida(conv)) marcarConversaLida(conv.id);
+  }
+
+  async function marcarConversaLida(conversaId) {
+    const agora = new Date().toISOString();
+    await supabase.from("chat_conversas").update({ staff_lido_em: agora }).eq("id", conversaId);
+    setConversas((atual) => atual.map((c) => (c.id === conversaId ? { ...c, staff_lido_em: agora } : c)));
+    setConversaAtual((atual) => (atual?.id === conversaId ? { ...atual, staff_lido_em: agora } : atual));
   }
 
   async function enviarMensagemChat(e) {
@@ -158,6 +185,8 @@ export default function Comunicacao() {
       });
       if (error) throw error;
 
+      notificarClienteChat(conversaAtual);
+
       setTextoChat("");
       setArquivoChat(null);
       carregarMensagensChat(conversaAtual.id);
@@ -166,6 +195,25 @@ export default function Comunicacao() {
       alert(`Não foi possível enviar a mensagem: ${err.message}`);
     } finally {
       setEnviandoChat(false);
+    }
+  }
+
+  // Falha ao notificar não deve travar o envio — é só um aviso a mais.
+  async function notificarClienteChat(conversa) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch("/api/portal-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          clienteId: conversa.cliente_id,
+          title: "Nova mensagem da CARSANT",
+          body: conversa.assunto,
+          url: "/portal/comunicacao",
+        }),
+      });
+    } catch {
+      // silencioso
     }
   }
 
@@ -322,8 +370,13 @@ export default function Comunicacao() {
             <button onClick={() => setAba("registro")} className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${aba === "registro" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}>
               Registro
             </button>
-            <button onClick={() => setAba("chat")} className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${aba === "chat" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}>
+            <button onClick={() => setAba("chat")} className={`relative flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${aba === "chat" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}>
               💬 Chat
+              {conversas.filter(naoLida).length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-semibold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1">
+                  {conversas.filter(naoLida).length}
+                </span>
+              )}
             </button>
           </div>
           {aba === "registro" ? (
@@ -391,7 +444,10 @@ export default function Comunicacao() {
                   onClick={() => abrirConversa(c)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${conversaAtual?.id === c.id ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50"}`}
                 >
-                  <div className="font-medium text-sm text-gray-800 truncate">{c.clientes?.nome}</div>
+                  <div className="flex items-center gap-1.5">
+                    {naoLida(c) && <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
+                    <div className={`text-sm truncate ${naoLida(c) ? "font-bold text-gray-900" : "font-medium text-gray-800"}`}>{c.clientes?.nome}</div>
+                  </div>
                   <div className="text-xs text-gray-500 truncate mt-0.5">{c.assunto}</div>
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{SETORES[c.setor]?.label || c.setor}</span>

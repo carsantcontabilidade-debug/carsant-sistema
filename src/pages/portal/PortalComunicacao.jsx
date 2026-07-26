@@ -87,6 +87,8 @@ export default function PortalComunicacao() {
       })
       if (msgError) throw msgError
 
+      avisarEquipe(conversa.id)
+
       setNovaAberta(false)
       setMensagemInicial('')
       await fetchConversas()
@@ -124,6 +126,8 @@ export default function PortalComunicacao() {
       })
       if (error) throw error
 
+      avisarEquipe(conversaAtual.id)
+
       setTexto('')
       setArquivo(null)
       fetchMensagens(conversaAtual.id)
@@ -131,6 +135,20 @@ export default function PortalComunicacao() {
       alert(`Não foi possível enviar a mensagem: ${err.message}`)
     } finally {
       setEnviando(false)
+    }
+  }
+
+  // Falha ao avisar não deve travar o envio da mensagem — é só um extra.
+  async function avisarEquipe(conversaId) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/chat-avisar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ conversaId }),
+      })
+    } catch {
+      // silencioso
     }
   }
 

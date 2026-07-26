@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle,
-  CheckSquare, Users, Calendar, ArrowRight, Loader2
+  CheckSquare, Users, Calendar, ArrowRight, Loader2, MessageCircle
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -22,13 +22,14 @@ export default function Dashboard() {
 
   async function carregarDados() {
     setLoading(true)
-    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos] = await Promise.all([
+    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('tarefas').select('*'),
       supabase.from('atendimentos').select('*').order('data', { ascending: false }).limit(5),
       supabase.from('eventos').select('*').gte('data', format(hoje, 'yyyy-MM-dd')).order('data').limit(5),
       supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtual).eq('ano', anoAtual),
+      supabase.from('chat_conversas').select('id, assunto, updated_at, ultimo_origem, staff_lido_em, clientes(nome)').eq('status', 'aberta'),
     ])
     setData({
       clientes: clientes.data || [],
@@ -37,6 +38,7 @@ export default function Dashboard() {
       atendimentos: atendimentos.data || [],
       eventos: eventos.data || [],
       pagamentos: pagamentos.data || [],
+      conversas: conversas.data || [],
     })
     setLoading(false)
   }
@@ -47,10 +49,14 @@ export default function Dashboard() {
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos } = data
+  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas } = data
   const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
   const hojeStr = format(hoje, 'yyyy-MM-dd')
   const hoje7Str = format(hoje7, 'yyyy-MM-dd')
+
+  const conversasNaoLidas = conversas.filter(
+    (c) => c.ultimo_origem === 'cliente' && (!c.staff_lido_em || new Date(c.staff_lido_em) < new Date(c.updated_at))
+  )
 
   // KPIs
   const totalHonorarios = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
@@ -83,6 +89,25 @@ export default function Dashboard() {
           {format(hoje, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
         </p>
       </div>
+
+      {/* Comunicação — prioridade máxima, primeiro alerta visto ao entrar */}
+      {conversasNaoLidas.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+            <MessageCircle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {conversasNaoLidas.length} nova{conversasNaoLidas.length > 1 ? 's' : ''} mensagem{conversasNaoLidas.length > 1 ? 'ns' : ''} no chat
+              {conversasNaoLidas.length === 1 && conversasNaoLidas[0].clientes?.nome ? ` — ${conversasNaoLidas[0].clientes.nome}` : ''}
+            </span>
+            <button
+              onClick={() => navigate(conversasNaoLidas.length === 1 ? `/comunicacao?conversa=${conversasNaoLidas[0].id}` : '/comunicacao')}
+              className="ml-auto text-blue-700 hover:text-blue-900 font-medium flex items-center gap-1"
+            >
+              Ver <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Alertas */}
       {(tarefasAtrasadas.length > 0 || inadimplentes.length > 0) && (
