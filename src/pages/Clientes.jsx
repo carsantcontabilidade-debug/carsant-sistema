@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
-import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature, MapPin } from 'lucide-react'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, regimes: ['MEI'] },
@@ -44,6 +44,8 @@ export default function Clientes() {
   const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
   const [emitindoNfse, setEmitindoNfse] = useState(null) // id do cliente com NFS-e em emissão
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
+  const [atualizandoEnderecos, setAtualizandoEnderecos] = useState(false)
+  const [progressoEnderecos, setProgressoEnderecos] = useState(null)
   const [colabs, setColabs] = useState([])
 
   useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
@@ -104,6 +106,7 @@ export default function Clientes() {
         bairro: f.bairro || dados.bairro || '',
         cep: f.cep || dados.cep || '',
         uf: dados.uf || f.uf,
+        codigo_municipio_ibge: f.codigo_municipio_ibge && f.codigo_municipio_ibge !== '2910800' ? f.codigo_municipio_ibge : (dados.codigo_municipio_ibge || f.codigo_municipio_ibge),
       }))
     } catch (err) {
       alert(`Não foi possível buscar o CNPJ: ${err.message}`)
@@ -246,6 +249,63 @@ export default function Clientes() {
     }
   }
 
+  async function completarEnderecosViaCnpj() {
+    const semEndereco = clientes.filter(c => c.cnpj?.replace(/\D/g, '').length === 14 && (!c.uf || !c.codigo_municipio_ibge))
+    if (semEndereco.length === 0) {
+      alert('Todos os clientes com CNPJ já têm estado/cidade preenchidos.')
+      return
+    }
+    if (!confirm(`${semEndereco.length} cliente(s) sem estado/cidade completos. Buscar automaticamente na Receita Federal (BrasilAPI) agora? Só preenche o que estiver vazio, não sobrescreve nada.`)) return
+
+    setAtualizandoEnderecos(true)
+    setProgressoEnderecos({ atual: 0, total: semEndereco.length })
+    const porLocal = {}
+    let atualizados = 0
+    const falhas = []
+
+    for (let i = 0; i < semEndereco.length; i++) {
+      const cliente = semEndereco[i]
+      setProgressoEnderecos({ atual: i + 1, total: semEndereco.length })
+      try {
+        const cnpjLimpo = cliente.cnpj.replace(/\D/g, '')
+        const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
+        if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
+        const dados = await resp.json()
+
+        const atualizacao = {
+          logradouro: cliente.logradouro || dados.logradouro || null,
+          numero_endereco: cliente.numero_endereco || dados.numero || null,
+          complemento: cliente.complemento || dados.complemento || null,
+          bairro: cliente.bairro || dados.bairro || null,
+          cep: cliente.cep || dados.cep || null,
+          uf: cliente.uf || dados.uf || null,
+          codigo_municipio_ibge: cliente.codigo_municipio_ibge || dados.codigo_municipio_ibge || null,
+        }
+
+        const { error } = await supabase.from('clientes').update(atualizacao).eq('id', cliente.id)
+        if (error) throw error
+
+        atualizados++
+        const chave = `${dados.uf || '?'} / ${dados.municipio || '?'}`
+        porLocal[chave] = (porLocal[chave] || 0) + 1
+      } catch (err) {
+        falhas.push(`${cliente.nome}: ${err.message}`)
+      }
+      await new Promise(r => setTimeout(r, 400)) // não sobrecarregar a API pública
+    }
+
+    setAtualizandoEnderecos(false)
+    setProgressoEnderecos(null)
+    await fetchClientes()
+
+    const resumoLocal = Object.entries(porLocal).sort((a, b) => b[1] - a[1]).map(([local, qtd]) => `${local}: ${qtd}`).join('\n')
+    alert(
+      `Concluído!\n\n${atualizados} cliente(s) atualizado(s).\n${falhas.length} falha(s).\n\n` +
+      (resumoLocal ? `Distribuição encontrada:\n${resumoLocal}` : '') +
+      (falhas.length ? `\n\nFalhas:\n${falhas.join('\n')}` : '')
+    )
+  }
+
   const filtrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) &&
     (!filtroRegime || c.regime === filtroRegime)
@@ -261,9 +321,21 @@ export default function Clientes() {
           <p className="text-sm text-gray-500 mt-1">{clientes.length} clientes cadastrados</p>
         </div>
         {isGestor && (
-          <button onClick={abrirNovo} className="btn-primary">
-            <Plus className="w-4 h-4" /> Novo cliente
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={completarEnderecosViaCnpj}
+              disabled={atualizandoEnderecos}
+              className="btn-secondary gap-1.5"
+              title="Busca estado/cidade na Receita Federal para clientes sem esse dado"
+            >
+              {atualizandoEnderecos
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {progressoEnderecos ? `${progressoEnderecos.atual}/${progressoEnderecos.total}` : '...'}</>
+                : <><MapPin className="w-4 h-4" /> Completar endereços</>}
+            </button>
+            <button onClick={abrirNovo} className="btn-primary">
+              <Plus className="w-4 h-4" /> Novo cliente
+            </button>
+          </div>
         )}
       </div>
 
