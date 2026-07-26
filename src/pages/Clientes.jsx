@@ -46,6 +46,8 @@ export default function Clientes() {
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
   const [atualizandoEnderecos, setAtualizandoEnderecos] = useState(false)
   const [progressoEnderecos, setProgressoEnderecos] = useState(null)
+  const [distribuicao, setDistribuicao] = useState(null)
+  const [mostrarDistribuicao, setMostrarDistribuicao] = useState(false)
   const [colabs, setColabs] = useState([])
 
   useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
@@ -306,6 +308,38 @@ export default function Clientes() {
     )
   }
 
+  async function verDistribuicao() {
+    if (mostrarDistribuicao) { setMostrarDistribuicao(false); return }
+    setMostrarDistribuicao(true)
+    if (distribuicao) return // já calculado nesta sessão da tela
+
+    const porUf = {}
+    const porMunicipioCount = {}
+    const semEndereco = []
+    for (const c of clientes) {
+      if (c.uf) porUf[c.uf] = (porUf[c.uf] || 0) + 1
+      if (c.codigo_municipio_ibge) porMunicipioCount[c.codigo_municipio_ibge] = (porMunicipioCount[c.codigo_municipio_ibge] || 0) + 1
+      if (!c.uf || !c.codigo_municipio_ibge) semEndereco.push(c.nome)
+    }
+
+    const codigos = Object.keys(porMunicipioCount)
+    const municipios = await Promise.all(codigos.map(async (codigo) => {
+      try {
+        const r = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/municipios/${codigo}`)
+        const d = await r.json()
+        return { codigo, nome: d.nome, uf: d.microrregiao?.mesorregiao?.UF?.sigla || '' }
+      } catch {
+        return { codigo, nome: `(código ${codigo})`, uf: '' }
+      }
+    }))
+
+    const porMunicipio = municipios
+      .map((m) => ({ ...m, qtd: porMunicipioCount[m.codigo] }))
+      .sort((a, b) => b.qtd - a.qtd)
+
+    setDistribuicao({ porUf, porMunicipio, semEndereco })
+  }
+
   const filtrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) &&
     (!filtroRegime || c.regime === filtroRegime)
@@ -322,6 +356,9 @@ export default function Clientes() {
         </div>
         {isGestor && (
           <div className="flex items-center gap-2">
+            <button onClick={verDistribuicao} className="btn-secondary gap-1.5">
+              📊 {mostrarDistribuicao ? 'Ocultar' : 'Ver'} distribuição
+            </button>
             <button
               onClick={completarEnderecosViaCnpj}
               disabled={atualizandoEnderecos}
@@ -338,6 +375,48 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      {mostrarDistribuicao && (
+        <div className="card p-4 mb-5">
+          {!distribuicao ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Calculando...</div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Por estado (UF)</h3>
+                <div className="space-y-1">
+                  {Object.entries(distribuicao.porUf).sort((a, b) => b[1] - a[1]).map(([uf, qtd]) => (
+                    <div key={uf} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">{uf}</span>
+                      <span className="font-medium text-gray-900">{qtd}</span>
+                    </div>
+                  ))}
+                  {Object.keys(distribuicao.porUf).length === 0 && <p className="text-sm text-gray-400">Nenhum dado ainda</p>}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Por cidade</h3>
+                <div className="space-y-1">
+                  {distribuicao.porMunicipio.map((m) => (
+                    <div key={m.codigo} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">{m.nome}{m.uf ? ` — ${m.uf}` : ''}</span>
+                      <span className="font-medium text-gray-900">{m.qtd}</span>
+                    </div>
+                  ))}
+                  {distribuicao.porMunicipio.length === 0 && <p className="text-sm text-gray-400">Nenhum dado ainda</p>}
+                </div>
+              </div>
+              {distribuicao.semEndereco.length > 0 && (
+                <div className="sm:col-span-2 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-amber-700">
+                    {distribuicao.semEndereco.length} cliente(s) ainda sem estado/cidade: {distribuicao.semEndereco.join(', ')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="flex gap-3 mb-5 flex-wrap">
