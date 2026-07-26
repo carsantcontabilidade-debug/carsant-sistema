@@ -6,6 +6,8 @@ import {
   CANAIS,
   formatarTelefone,
 } from "../lib/comunicacao";
+import { SETORES } from "../lib/chat";
+import { sanitizarNomeArquivo } from "../lib/storage";
 
 const STATUS_CORES = {
   enviado: "bg-green-100 text-green-700",
@@ -44,13 +46,160 @@ export default function Comunicacao() {
     proximo_passo: "",
   });
 
+  // --- Chat (conversas em tempo real com o Portal do Cliente) ---
+  const [aba, setAba] = useState("registro"); // "registro" | "chat"
+  const [conversas, setConversas] = useState([]);
+  const [loadingConversas, setLoadingConversas] = useState(false);
+  const [filtroSetor, setFiltroSetor] = useState("todos");
+  const [filtroStatusChat, setFiltroStatusChat] = useState("aberta");
+  const [conversaAtual, setConversaAtual] = useState(null);
+  const [mensagensChat, setMensagensChat] = useState([]);
+  const [loadingMsgsChat, setLoadingMsgsChat] = useState(false);
+  const [textoChat, setTextoChat] = useState("");
+  const [arquivoChat, setArquivoChat] = useState(null);
+  const [enviandoChat, setEnviandoChat] = useState(false);
+  const [colaboradores, setColaboradores] = useState([]);
+  const [encaminharAberto, setEncaminharAberto] = useState(false);
+  const fimChatRef = useRef(null);
+
   useEffect(() => {
     carregarClientes();
+    carregarColaboradores();
   }, []);
 
   useEffect(() => {
     carregarComunicacoes(clienteSelecionado?.id || null);
   }, [clienteSelecionado, filtroCanal]);
+
+  useEffect(() => {
+    if (aba === "chat") carregarConversas();
+  }, [aba, filtroSetor, filtroStatusChat]);
+
+  useEffect(() => {
+    if (!conversaAtual?.id) return;
+    carregarMensagensChat(conversaAtual.id);
+
+    const channel = supabase
+      .channel(`staff_chat_mensagens_${conversaAtual.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_mensagens", filter: `conversa_id=eq.${conversaAtual.id}` },
+        (payload) => {
+          setMensagensChat((atual) => (atual.some((m) => m.id === payload.new.id) ? atual : [...atual, payload.new]));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [conversaAtual?.id]);
+
+  useEffect(() => {
+    fimChatRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensagensChat]);
+
+  async function carregarColaboradores() {
+    const { data } = await supabase.from("profiles").select("id, nome, setor").not("setor", "is", null);
+    setColaboradores(data || []);
+  }
+
+  async function carregarConversas() {
+    setLoadingConversas(true);
+    let query = supabase
+      .from("chat_conversas")
+      .select("*, clientes(nome, telefone)")
+      .order("updated_at", { ascending: false });
+    if (filtroSetor !== "todos") query = query.eq("setor", filtroSetor);
+    if (filtroStatusChat !== "todas") query = query.eq("status", filtroStatusChat);
+    const { data, error } = await query;
+    if (error) console.error("Erro ao carregar conversas:", error);
+    setConversas(data || []);
+    setLoadingConversas(false);
+  }
+
+  async function carregarMensagensChat(conversaId) {
+    setLoadingMsgsChat(true);
+    const { data } = await supabase
+      .from("chat_mensagens")
+      .select("*")
+      .eq("conversa_id", conversaId)
+      .order("created_at", { ascending: true });
+    setMensagensChat(data || []);
+    setLoadingMsgsChat(false);
+  }
+
+  function abrirConversa(conv) {
+    setConversaAtual(conv);
+    setEncaminharAberto(false);
+  }
+
+  async function enviarMensagemChat(e) {
+    e.preventDefault();
+    if (!conversaAtual || (!textoChat.trim() && !arquivoChat)) return;
+    setEnviandoChat(true);
+    try {
+      let anexo_nome = null;
+      let anexo_path = null;
+      if (arquivoChat) {
+        const path = `${conversaAtual.id}/${Date.now()}_${sanitizarNomeArquivo(arquivoChat.name)}`;
+        const { error: uploadError } = await supabase.storage.from("chat-anexos").upload(path, arquivoChat);
+        if (uploadError) throw uploadError;
+        anexo_nome = arquivoChat.name;
+        anexo_path = path;
+      }
+
+      const { error } = await supabase.from("chat_mensagens").insert({
+        conversa_id: conversaAtual.id,
+        origem: "escritorio",
+        autor_id: profile?.id,
+        autor_nome: profile?.nome,
+        mensagem: textoChat.trim() || null,
+        anexo_nome,
+        anexo_path,
+      });
+      if (error) throw error;
+
+      setTextoChat("");
+      setArquivoChat(null);
+      carregarMensagensChat(conversaAtual.id);
+      carregarConversas();
+    } catch (err) {
+      alert(`Não foi possível enviar a mensagem: ${err.message}`);
+    } finally {
+      setEnviandoChat(false);
+    }
+  }
+
+  async function baixarAnexoChat(msg) {
+    const { data, error } = await supabase.storage.from("chat-anexos").createSignedUrl(msg.anexo_path, 300);
+    if (error || !data) { alert("Não foi possível abrir o anexo."); return; }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function encaminharConversa(setor, responsavelId) {
+    if (!conversaAtual) return;
+    const { error } = await supabase
+      .from("chat_conversas")
+      .update({ setor, responsavel_atual_id: responsavelId || null })
+      .eq("id", conversaAtual.id);
+    if (error) { alert(`Não foi possível encaminhar: ${error.message}`); return; }
+    setEncaminharAberto(false);
+    const atualizada = { ...conversaAtual, setor, responsavel_atual_id: responsavelId || null };
+    setConversaAtual(atualizada);
+    carregarConversas();
+  }
+
+  async function alternarStatusConversa() {
+    if (!conversaAtual) return;
+    const novoStatus = conversaAtual.status === "encerrada" ? "aberta" : "encerrada";
+    const { error } = await supabase.from("chat_conversas").update({ status: novoStatus }).eq("id", conversaAtual.id);
+    if (error) { alert(`Não foi possível atualizar: ${error.message}`); return; }
+    setConversaAtual({ ...conversaAtual, status: novoStatus });
+    carregarConversas();
+  }
+
+  function fmtHoraChat(d) {
+    return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
 
   async function carregarClientes() {
     setLoadingClientes(true);
@@ -163,126 +312,271 @@ export default function Comunicacao() {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-gray-800 text-lg">💬 Comunicação</h2>
-            <button onClick={() => abrirNovaComm()} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
-              + Nova
+            {aba === "registro" && (
+              <button onClick={() => abrirNovaComm()} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">
+                + Nova
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-3">
+            <button onClick={() => setAba("registro")} className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${aba === "registro" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}>
+              Registro
+            </button>
+            <button onClick={() => setAba("chat")} className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${aba === "chat" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}>
+              💬 Chat
             </button>
           </div>
-          <input
-            type="text"
-            placeholder="Buscar cliente..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <button
-          onClick={() => setClienteSelecionado(null)}
-          className={`w-full text-left px-4 py-3 text-sm border-b border-gray-100 flex items-center gap-2 transition-colors ${!clienteSelecionado ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"}`}
-        >
-          <span className="text-lg">📋</span>
-          <span>Todas as comunicações</span>
-        </button>
-
-        <div className="flex-1 overflow-y-auto">
-          {loadingClientes ? (
-            <div className="p-4 text-sm text-gray-400 text-center">Carregando...</div>
-          ) : clientesFiltrados.length === 0 ? (
-            <div className="p-4 text-sm text-gray-400 text-center">Nenhum cliente encontrado</div>
+          {aba === "registro" ? (
+            <input
+              type="text"
+              placeholder="Buscar cliente..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           ) : (
-            clientesFiltrados.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setClienteSelecionado(c)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${clienteSelecionado?.id === c.id ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50"}`}
-              >
-                <div className="font-medium text-sm text-gray-800 truncate">{c.nome}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{c.regime}</div>
-              </button>
-            ))
+            <div className="flex gap-2">
+              <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none">
+                <option value="todos">Todos os setores</option>
+                {Object.entries(SETORES).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}
+              </select>
+              <select value={filtroStatusChat} onChange={(e) => setFiltroStatusChat(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none">
+                <option value="aberta">Abertas</option>
+                <option value="encerrada">Encerradas</option>
+                <option value="todas">Todas</option>
+              </select>
+            </div>
           )}
         </div>
+
+        {aba === "registro" ? (
+          <>
+            <button
+              onClick={() => setClienteSelecionado(null)}
+              className={`w-full text-left px-4 py-3 text-sm border-b border-gray-100 flex items-center gap-2 transition-colors ${!clienteSelecionado ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"}`}
+            >
+              <span className="text-lg">📋</span>
+              <span>Todas as comunicações</span>
+            </button>
+
+            <div className="flex-1 overflow-y-auto">
+              {loadingClientes ? (
+                <div className="p-4 text-sm text-gray-400 text-center">Carregando...</div>
+              ) : clientesFiltrados.length === 0 ? (
+                <div className="p-4 text-sm text-gray-400 text-center">Nenhum cliente encontrado</div>
+              ) : (
+                clientesFiltrados.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setClienteSelecionado(c)}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${clienteSelecionado?.id === c.id ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50"}`}
+                  >
+                    <div className="font-medium text-sm text-gray-800 truncate">{c.nome}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{c.regime}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            {loadingConversas ? (
+              <div className="p-4 text-sm text-gray-400 text-center">Carregando...</div>
+            ) : conversas.length === 0 ? (
+              <div className="p-4 text-sm text-gray-400 text-center">Nenhuma conversa encontrada</div>
+            ) : (
+              conversas.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => abrirConversa(c)}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${conversaAtual?.id === c.id ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50"}`}
+                >
+                  <div className="font-medium text-sm text-gray-800 truncate">{c.clientes?.nome}</div>
+                  <div className="text-xs text-gray-500 truncate mt-0.5">{c.assunto}</div>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{SETORES[c.setor]?.label || c.setor}</span>
+                    <span className="text-[10px] text-gray-400">{fmtHoraChat(c.updated_at)}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Área principal */}
       <div className="flex-1 flex flex-col">
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-gray-800 text-xl">
-              {clienteSelecionado ? clienteSelecionado.nome : "Todas as comunicações"}
-            </h1>
-            {clienteSelecionado && (
-              <p className="text-sm text-gray-400 mt-0.5">
-                {clienteSelecionado.telefone && `📱 ${clienteSelecionado.telefone}`}
-                {getEmail(clienteSelecionado) && ` · ✉️ ${getEmail(clienteSelecionado)}`}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={filtroCanal}
-              onChange={(e) => setFiltroCanal(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-            >
-              <option value="todos">Todos os canais</option>
-              <option value="whatsapp">📱 WhatsApp</option>
-              <option value="email">✉️ E-mail</option>
-              <option value="telefone">📞 Telefone</option>
-              <option value="presencial">🤝 Presencial</option>
-            </select>
-            {clienteSelecionado && (
-              <button onClick={() => abrirNovaComm(clienteSelecionado)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-                + Nova comunicação
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6">
-          {loadingComms ? (
-            <div className="text-center py-10 text-gray-400">Carregando...</div>
-          ) : comunicacoes.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="text-5xl mb-4">💬</div>
-              <p className="text-gray-500 font-medium">Nenhuma comunicação registrada</p>
-              <p className="text-gray-400 text-sm mt-1">Clique em "+ Nova" para registrar a primeira</p>
+        {aba === "registro" ? (
+          <>
+            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h1 className="font-bold text-gray-800 text-xl">
+                  {clienteSelecionado ? clienteSelecionado.nome : "Todas as comunicações"}
+                </h1>
+                {clienteSelecionado && (
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    {clienteSelecionado.telefone && `📱 ${clienteSelecionado.telefone}`}
+                    {getEmail(clienteSelecionado) && ` · ✉️ ${getEmail(clienteSelecionado)}`}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={filtroCanal}
+                  onChange={(e) => setFiltroCanal(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                >
+                  <option value="todos">Todos os canais</option>
+                  <option value="whatsapp">📱 WhatsApp</option>
+                  <option value="email">✉️ E-mail</option>
+                  <option value="telefone">📞 Telefone</option>
+                  <option value="presencial">🤝 Presencial</option>
+                </select>
+                {clienteSelecionado && (
+                  <button onClick={() => abrirNovaComm(clienteSelecionado)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+                    + Nova comunicação
+                  </button>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {comunicacoes.map((comm) => (
-                <div key={comm.id} onClick={() => visualizarComm(comm)} className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <span className="text-2xl mt-0.5">{CANAL_ICONES[comm.canal]}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {!clienteSelecionado && <span className="font-semibold text-gray-800 text-sm">{comm.clientes?.nome}</span>}
-                          {comm.template && (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                              {TEMPLATES[comm.template]?.label || comm.template}
-                            </span>
-                          )}
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingComms ? (
+                <div className="text-center py-10 text-gray-400">Carregando...</div>
+              ) : comunicacoes.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="text-5xl mb-4">💬</div>
+                  <p className="text-gray-500 font-medium">Nenhuma comunicação registrada</p>
+                  <p className="text-gray-400 text-sm mt-1">Clique em "+ Nova" para registrar a primeira</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {comunicacoes.map((comm) => (
+                    <div key={comm.id} onClick={() => visualizarComm(comm)} className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <span className="text-2xl mt-0.5">{CANAL_ICONES[comm.canal]}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {!clienteSelecionado && <span className="font-semibold text-gray-800 text-sm">{comm.clientes?.nome}</span>}
+                              {comm.template && (
+                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                  {TEMPLATES[comm.template]?.label || comm.template}
+                                </span>
+                              )}
+                            </div>
+                            {comm.assunto && <p className="text-sm font-medium text-gray-700 mt-1">{comm.assunto}</p>}
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">{comm.mensagem}</p>
+                            {comm.proximo_passo && <p className="text-xs text-blue-600 mt-1.5">→ Próximo passo: {comm.proximo_passo}</p>}
+                          </div>
                         </div>
-                        {comm.assunto && <p className="text-sm font-medium text-gray-700 mt-1">{comm.assunto}</p>}
-                        <p className="text-sm text-gray-500 mt-1 line-clamp-2">{comm.mensagem}</p>
-                        {comm.proximo_passo && <p className="text-xs text-blue-600 mt-1.5">→ Próximo passo: {comm.proximo_passo}</p>}
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_CORES[comm.status] || "bg-gray-100 text-gray-600"}`}>
+                            {comm.status}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(comm.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          {comm.profiles?.nome && <span className="text-xs text-gray-400">{comm.profiles.nome}</span>}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_CORES[comm.status] || "bg-gray-100 text-gray-600"}`}>
-                        {comm.status}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(comm.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      {comm.profiles?.nome && <span className="text-xs text-gray-400">{comm.profiles.nome}</span>}
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : !conversaAtual ? (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            Selecione uma conversa para visualizar
+          </div>
+        ) : (
+          <>
+            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h1 className="font-bold text-gray-800 text-xl">{conversaAtual.clientes?.nome}</h1>
+                <p className="text-sm text-gray-400 mt-0.5">{conversaAtual.assunto}</p>
+              </div>
+              <div className="flex items-center gap-2 relative">
+                <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium">
+                  {SETORES[conversaAtual.setor]?.label || conversaAtual.setor}
+                </span>
+                <button onClick={() => setEncaminharAberto((v) => !v)} className="border border-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium">
+                  ↪ Encaminhar
+                </button>
+                <button onClick={alternarStatusConversa} className={`text-xs px-3 py-1.5 rounded-lg font-medium ${conversaAtual.status === "encerrada" ? "bg-green-50 text-green-700 hover:bg-green-100" : "border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                  {conversaAtual.status === "encerrada" ? "Reabrir" : "Encerrar"}
+                </button>
+                {encaminharAberto && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-10 p-2">
+                    {Object.entries(SETORES).map(([setorKey, s]) => (
+                      <div key={setorKey} className="mb-1 last:mb-0">
+                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pt-1">{s.label}</div>
+                        {colaboradores.filter((c) => c.setor === setorKey).map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => encaminharConversa(setorKey, c.id)}
+                            className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-blue-50 text-gray-700"
+                          >
+                            {c.nome}
+                          </button>
+                        ))}
+                        {colaboradores.filter((c) => c.setor === setorKey).length === 0 && (
+                          <button onClick={() => encaminharConversa(setorKey, null)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-blue-50 text-gray-500">
+                            (sem responsável cadastrado)
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-gray-50">
+              {loadingMsgsChat ? (
+                <div className="text-center py-10 text-gray-400">Carregando...</div>
+              ) : (
+                mensagensChat.map((m) => (
+                  <div key={m.id} className={`flex ${m.origem === "escritorio" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[65%] rounded-2xl px-4 py-2 text-sm ${m.origem === "escritorio" ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-800"}`}>
+                      {m.origem === "escritorio" && m.autor_nome && <div className="text-xs font-medium mb-0.5 opacity-70">{m.autor_nome}</div>}
+                      {m.mensagem && <p className="whitespace-pre-wrap">{m.mensagem}</p>}
+                      {m.anexo_path && (
+                        <button onClick={() => baixarAnexoChat(m)} className={`mt-1.5 flex items-center gap-1.5 text-xs underline ${m.origem === "escritorio" ? "text-white" : "text-blue-700"}`}>
+                          📎 {m.anexo_nome}
+                        </button>
+                      )}
+                      <div className={`text-[10px] mt-1 ${m.origem === "escritorio" ? "text-white/70" : "text-gray-400"}`}>{fmtHoraChat(m.created_at)}</div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
+              <div ref={fimChatRef} />
             </div>
-          )}
-        </div>
+
+            <form onSubmit={enviarMensagemChat} className="p-3 border-t border-gray-200 bg-white flex items-end gap-2">
+              <label className="border border-gray-200 rounded-lg p-2.5 cursor-pointer text-gray-500 hover:bg-gray-50">
+                📎
+                <input type="file" className="hidden" onChange={(e) => setArquivoChat(e.target.files?.[0] || null)} />
+              </label>
+              <textarea
+                rows={1}
+                value={textoChat}
+                onChange={(e) => setTextoChat(e.target.value)}
+                placeholder={arquivoChat ? `Anexo: ${arquivoChat.name}` : "Digite sua resposta..."}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={enviandoChat || (!textoChat.trim() && !arquivoChat)}
+                className="bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {enviandoChat ? "..." : "Enviar"}
+              </button>
+            </form>
+          </>
+        )}
       </div>
 
       {/* Modal */}

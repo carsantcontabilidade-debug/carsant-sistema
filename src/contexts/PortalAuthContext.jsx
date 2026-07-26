@@ -40,18 +40,31 @@ export function PortalAuthProvider({ children }) {
     const { data: leituras } = await supabase.from('portal_leituras').select('secao, visitado_em').eq('cliente_id', clienteId)
     const visitadoEm = Object.fromEntries((leituras || []).map(l => [l.secao, l.visitado_em]))
 
-    const [cobrancasRes, notasRes, documentosRes, comunicacoesRes] = await Promise.all([
+    const [cobrancasRes, notasRes, documentosRes, comunicacoesRes, chatRes] = await Promise.all([
       contarNovos('cobrancas', clienteId, visitadoEm.honorarios),
       contarNovos('notas_fiscais', clienteId, visitadoEm.honorarios, { status: 'emitida' }),
       contarNovos('documentos_cliente', clienteId, visitadoEm.documentos, { origem: 'escritorio' }),
       contarNovos('comunicacoes', clienteId, visitadoEm.comunicacao),
+      contarMensagensChatNovas(clienteId, visitadoEm.comunicacao),
     ])
 
     setContadores({
       honorarios: cobrancasRes + notasRes,
       documentos: documentosRes,
-      comunicacao: comunicacoesRes,
+      comunicacao: comunicacoesRes + chatRes,
     })
+  }
+
+  // Mensagens de chat do escritório não têm cliente_id direto (ficam
+  // dentro de chat_conversas) — busca as conversas do cliente primeiro.
+  async function contarMensagensChatNovas(clienteId, desde) {
+    const { data: conversas } = await supabase.from('chat_conversas').select('id').eq('cliente_id', clienteId)
+    const ids = (conversas || []).map((c) => c.id)
+    if (ids.length === 0) return 0
+    let query = supabase.from('chat_mensagens').select('id', { count: 'exact', head: true }).eq('origem', 'escritorio').in('conversa_id', ids)
+    if (desde) query = query.gt('created_at', desde)
+    const { count } = await query
+    return count || 0
   }
 
   async function contarNovos(tabela, clienteId, desde, filtrosExtras = {}) {
