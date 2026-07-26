@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { sanitizarNomeArquivo } from '../lib/storage'
 import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais } from '../lib/certidoes'
-import { Loader2, Search, FileText } from 'lucide-react'
+import { Loader2, Search, FileText, Zap } from 'lucide-react'
+
+// Só o Municipal (Feira de Santana) tem emissão automática hoje —
+// confirmado sem captcha/login. Os demais usam captcha (FGTS,
+// Trabalhista, Federal) ou fluxo assíncrono de protocolo (Falência),
+// então continuam manuais.
+const TIPOS_AUTOMATIZAVEIS = ['municipal']
 
 function fmtData(d) {
   if (!d) return ''
@@ -18,13 +24,14 @@ export default function Certidoes() {
   const [form, setForm] = useState({ data_emissao: '', data_validade: '', observacoes: '' })
   const [arquivo, setArquivo] = useState(null)
   const [salvando, setSalvando] = useState(false)
+  const [emitindo, setEmitindo] = useState(null) // `${clienteId}|${tipo}` em andamento
 
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
     setLoading(true)
     const [clientesRes, certidoesRes] = await Promise.all([
-      supabase.from('clientes').select('id, nome, regime').order('nome'),
+      supabase.from('clientes').select('id, nome, regime, cnpj').order('nome'),
       supabase.from('certidoes').select('*'),
     ])
     setClientes(clientesRes.data || [])
@@ -76,6 +83,34 @@ export default function Certidoes() {
       alert(`Não foi possível salvar: ${err.message}`)
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function emitirAutomatico(cliente, tipo) {
+    if (!cliente.cnpj) { alert('Este cliente não tem CNPJ cadastrado.'); return }
+    const chave = `${cliente.id}|${tipo}`
+    setEmitindo(chave)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/certidao-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ clienteId: cliente.id, tipo }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao emitir.')
+      if (!data.sucesso) {
+        alert(`Não foi possível emitir automaticamente: ${data.motivo}`)
+        return
+      }
+      if (!data.negativa) {
+        alert('Certidão emitida, mas atenção: não parece ser uma certidão negativa — confira o arquivo salvo.')
+      }
+      carregar()
+    } catch (err) {
+      alert(`Erro ao emitir automaticamente: ${err.message}`)
+    } finally {
+      setEmitindo(null)
     }
   }
 
@@ -150,15 +185,29 @@ export default function Certidoes() {
                 {TIPOS_CERTIDAO.map((t) => {
                   const atual = certidoesPorCliente[c.id]?.[t.id]
                   const status = statusCertidao(atual?.data_validade)
+                  const chave = `${c.id}|${t.id}`
+                  const automatizavel = TIPOS_AUTOMATIZAVEIS.includes(t.id)
                   return (
                     <td key={t.id} className="px-3 py-2.5 text-center">
-                      <button
-                        onClick={() => abrirModal(c, t.id, atual)}
-                        className={`text-xs px-2.5 py-1 rounded-full font-medium border ${STATUS_COR[status]} hover:opacity-75`}
-                        title={atual?.data_validade ? `Válida até ${fmtData(atual.data_validade)}` : 'Clique para registrar'}
-                      >
-                        {atual?.data_validade ? fmtData(atual.data_validade) : STATUS_LABEL[status]}
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => abrirModal(c, t.id, atual)}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium border ${STATUS_COR[status]} hover:opacity-75`}
+                          title={atual?.data_validade ? `Válida até ${fmtData(atual.data_validade)}` : 'Clique para registrar'}
+                        >
+                          {atual?.data_validade ? fmtData(atual.data_validade) : STATUS_LABEL[status]}
+                        </button>
+                        {automatizavel && (
+                          <button
+                            onClick={() => emitirAutomatico(c, t.id)}
+                            disabled={emitindo === chave}
+                            className="text-yellow-600 hover:text-yellow-700 disabled:opacity-40"
+                            title="Emitir automaticamente (Prefeitura de Feira de Santana)"
+                          >
+                            {emitindo === chave ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )
                 })}
