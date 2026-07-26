@@ -27,7 +27,7 @@ const emptyForm = {
   nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
   telefone: '', email: '', email2: '', tipo: 'recorrente', obrigacoes: [],
   logradouro: '', numero_endereco: '', complemento: '', bairro: '', cep: '',
-  uf: 'BA', codigo_municipio_ibge: '2910800',
+  uf: '', codigo_municipio_ibge: '',
 }
 
 export default function Clientes() {
@@ -251,13 +251,25 @@ export default function Clientes() {
     }
   }
 
+  // O formulário de "Novo cliente" pré-preenche uf='BA' e
+  // codigo_municipio_ibge='2910800' (Feira de Santana) como valor
+  // padrão da tela. Se ninguém nunca digitou o restante do endereço
+  // (logradouro/cep), esse "BA/Feira de Santana" é só o placeholder do
+  // formulário salvo sem querer, não um endereço real confirmado.
+  function pareceEnderecoPlaceholder(c) {
+    return c.uf === 'BA' && c.codigo_municipio_ibge === '2910800' && !c.logradouro && !c.cep
+  }
+
   async function completarEnderecosViaCnpj() {
-    const semEndereco = clientes.filter(c => c.cnpj?.replace(/\D/g, '').length === 14 && (!c.uf || !c.codigo_municipio_ibge))
+    const semEndereco = clientes.filter(c =>
+      c.cnpj?.replace(/\D/g, '').length === 14 &&
+      (!c.uf || !c.codigo_municipio_ibge || pareceEnderecoPlaceholder(c))
+    )
     if (semEndereco.length === 0) {
       alert('Todos os clientes com CNPJ já têm estado/cidade preenchidos.')
       return
     }
-    if (!confirm(`${semEndereco.length} cliente(s) sem estado/cidade completos. Buscar automaticamente na Receita Federal (BrasilAPI) agora? Só preenche o que estiver vazio, não sobrescreve nada.`)) return
+    if (!confirm(`${semEndereco.length} cliente(s) sem estado/cidade confirmados (inclui quem só tem o "BA/Feira de Santana" padrão do formulário, nunca confirmado). Buscar automaticamente na Receita Federal (BrasilAPI) agora?`)) return
 
     setAtualizandoEnderecos(true)
     setProgressoEnderecos({ atual: 0, total: semEndereco.length })
@@ -273,15 +285,19 @@ export default function Clientes() {
         const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`)
         if (!resp.ok) throw new Error(resp.status === 404 ? 'CNPJ não encontrado' : `erro ${resp.status}`)
         const dados = await resp.json()
+        // Se o endereço atual for só o placeholder do formulário, o
+        // valor vindo da Receita Federal manda — não é "manter o que
+        // já tinha", porque o que tinha não era um dado real.
+        const placeholder = pareceEnderecoPlaceholder(cliente)
 
         const atualizacao = {
-          logradouro: cliente.logradouro || dados.logradouro || null,
-          numero_endereco: cliente.numero_endereco || dados.numero || null,
-          complemento: cliente.complemento || dados.complemento || null,
-          bairro: cliente.bairro || dados.bairro || null,
-          cep: cliente.cep || dados.cep || null,
-          uf: cliente.uf || dados.uf || null,
-          codigo_municipio_ibge: cliente.codigo_municipio_ibge || dados.codigo_municipio_ibge || null,
+          logradouro: (placeholder ? null : cliente.logradouro) || dados.logradouro || null,
+          numero_endereco: (placeholder ? null : cliente.numero_endereco) || dados.numero || null,
+          complemento: (placeholder ? null : cliente.complemento) || dados.complemento || null,
+          bairro: (placeholder ? null : cliente.bairro) || dados.bairro || null,
+          cep: (placeholder ? null : cliente.cep) || dados.cep || null,
+          uf: (placeholder ? null : cliente.uf) || dados.uf || null,
+          codigo_municipio_ibge: (placeholder ? null : cliente.codigo_municipio_ibge) || dados.codigo_municipio_ibge || null,
         }
 
         const { error } = await supabase.from('clientes').update(atualizacao).eq('id', cliente.id)
