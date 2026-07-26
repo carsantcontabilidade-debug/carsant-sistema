@@ -73,29 +73,21 @@ export default function Atendimento() {
   async function gerarEmail() {
     if (!template) return
     setGerandoEmail(true)
-    const clienteObj = clientes.find(c => c.nome === emCliente)
-    const prompts = {
-      cobranca: `Escreva um e-mail profissional e cordial de cobrança de honorário contábil para o cliente "${emCliente || '[Cliente]'}". ${emContexto}. Assine como CARSANT CONTABILIDADE — Feira de Santana, BA.`,
-      prazo: `Escreva um e-mail de aviso de prazo fiscal para "${emCliente || '[Cliente]'}". ${emContexto}. Seja claro sobre a data e consequências. Assine como CARSANT CONTABILIDADE.`,
-      informativo: `Escreva um informativo/circular sobre: ${emContexto}. Para cliente: ${emCliente || 'Prezado(a) cliente'}. Assine como CARSANT CONTABILIDADE.`,
-      boas_vindas: `Escreva um e-mail de boas-vindas para o novo cliente "${emCliente}". ${emContexto}. Assine como CARSANT CONTABILIDADE — Feira de Santana, BA.`,
-      documentos: `Escreva um e-mail solicitando documentos para "${emCliente || '[Cliente]'}". ${emContexto}. Seja específico e indique o prazo. Assine como CARSANT CONTABILIDADE.`,
-      personalizado: `Escreva um e-mail profissional da CARSANT CONTABILIDADE para "${emCliente || '[Cliente]'}". Conteúdo: ${emContexto}.`
-    }
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/gerar-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514', max_tokens: 1000,
-          system: 'Você é assistente do escritório CARSANT CONTABILIDADE, Feira de Santana-BA. Gere e-mails profissionais, cordiais e objetivos. Retorne apenas o texto do e-mail.',
-          messages: [{ role: 'user', content: prompts[template] }]
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ template, cliente: emCliente, contexto: emContexto }),
       })
       const data = await resp.json()
-      setEmailGerado(data.content?.[0]?.text || 'Erro ao gerar. Tente novamente.')
-    } catch {
-      setEmailGerado('Não foi possível conectar à IA. Verifique sua conexão.')
+      if (!resp.ok) throw new Error(data.error || 'Falha ao gerar e-mail.')
+      setEmailGerado(data.texto)
+    } catch (err) {
+      setEmailGerado(`Não foi possível gerar o e-mail: ${err.message}`)
     }
     setGerandoEmail(false)
   }
