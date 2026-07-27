@@ -182,7 +182,13 @@ export default function MapaClientes() {
     const qtd = clientesPorUf[uf.sigla] || 0
     layer.bindTooltip(`${uf.nome}: ${qtd} cliente${qtd === 1 ? '' : 's'}`)
     if (qtd > 0) {
-      layer.on('click', () => selecionarUf(uf.sigla, layer.getBounds()))
+      layer.on('click', () => {
+        try {
+          selecionarUf(uf.sigla, layer.getBounds())
+        } catch (err) {
+          alert(`Erro ao clicar em ${uf.nome}: ${err.message}`)
+        }
+      })
       layer.on('mouseover', () => layer.setStyle({ weight: 2 }))
       layer.on('mouseout', () => layer.setStyle({ weight: 1 }))
     }
@@ -192,7 +198,13 @@ export default function MapaClientes() {
     const codigo = feature.properties.codarea
     const qtd = clientesPorMunicipio[codigo] || 0
     if (qtd > 0) {
-      layer.on('click', () => selecionarMunicipio(codigo, layer.getBounds()))
+      layer.on('click', () => {
+        try {
+          selecionarMunicipio(codigo, layer.getBounds())
+        } catch (err) {
+          alert(`Erro ao clicar no município: ${err.message}`)
+        }
+      })
       layer.on('mouseover', () => layer.setStyle({ weight: 2 }))
       layer.on('mouseout', () => layer.setStyle({ weight: municipioSelecionado === codigo ? 3 : 1 }))
     }
