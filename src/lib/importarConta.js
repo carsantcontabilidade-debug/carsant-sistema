@@ -175,12 +175,14 @@ function decodificarBoleto(digitos) {
     // verificadores de bloco intercalados na linha digitável de 48.
     const barcode = digitos.slice(0, 11) + digitos.slice(12, 23) + digitos.slice(24, 35) + digitos.slice(36, 47)
     const identificadorValor = barcode[2]
-    // Tabela FEBRABAN da posição 3 (índice 2) do código de barras de
-    // arrecadação: 6 = valor efetivo em reais (o caso comum, confirmado
-    // com uma fatura real da Claro); 7 = quantidade de moeda; 8 = valor
-    // efetivo em moeda variável; 9 = uso exclusivo do banco (referência,
-    // sem valor monetário direto no código).
-    const valor = identificadorValor === '6' ? Number(barcode.slice(4, 15)) / 100 : null
+    // Tabela oficial FEBRABAN (Layout de Arrecadação v7, seção 5) da
+    // posição 3 do código de barras: "6" = valor efetivo em reais (DV
+    // módulo 10) e "8" = valor efetivo em reais (DV módulo 11) — as duas
+    // são "valor efetivo", só muda o módulo usado pro dígito verificador
+    // geral, não a posição do valor em si. Confirmado com uma fatura
+    // real da Claro (usa "6") e um DAS do Simples Nacional (usa "8").
+    // "7"/"9" = quantidade de moeda/referência, sem valor efetivo direto.
+    const valor = (identificadorValor === '6' || identificadorValor === '8') ? Number(barcode.slice(4, 15)) / 100 : null
     return { tipo: 'arrecadacao', valor, vencimento: null, linhaDigitavel: digitos }
   }
   return null
@@ -192,7 +194,9 @@ function normalizarDataBr(dmy) {
 }
 
 function buscarVencimentoNoTexto(texto) {
-  const comRotulo = texto.match(/Vencimento[:\s]*([0-3]?\d\/[01]?\d\/20\d{2})/i)
+  // "Vencimento" é o rótulo mais comum; guias tipo DAS/GPS costumam usar
+  // "Pagar até"/"Pagar este documento até" em vez disso.
+  const comRotulo = texto.match(/(?:Vencimento|Pagar\s+(?:este\s+documento\s+)?at[ée])[:\s]*([0-3]?\d\/[01]?\d\/20\d{2})/i)
   if (comRotulo) return normalizarDataBr(comRotulo[1])
   const generico = texto.match(/\b([0-3]?\d\/[01]?\d\/20\d{2})\b/)
   return generico ? normalizarDataBr(generico[1]) : null
