@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer } from 'lucide-react'
+import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer, XCircle, Repeat, X } from 'lucide-react'
 import { baixarComprovantePdf, gerarComprovantePdfBase64, textoParaBase64Utf8 } from '../lib/nfsePdf'
 
 const MESES = [
@@ -12,6 +12,7 @@ const MESES = [
 const STATUS_NOTA = {
   emitida: { label: 'Emitida', cor: 'bg-green-100 text-green-700' },
   erro: { label: 'Erro', cor: 'bg-red-100 text-red-700' },
+  cancelada: { label: 'Cancelada', cor: 'bg-gray-100 text-gray-500' },
 }
 
 function fmtValor(v) {
@@ -78,6 +79,10 @@ export default function NfseEmitir() {
   const [baixandoId, setBaixandoId] = useState(null)
   const [exportandoLote, setExportandoLote] = useState(false)
   const [gerandoRelatorioPdf, setGerandoRelatorioPdf] = useState(false)
+  const [cancelandoId, setCancelandoId] = useState(null)
+  const [notaSubstituir, setNotaSubstituir] = useState(null) // nota sendo substituída
+  const [formSubstituir, setFormSubstituir] = useState({ valorServicos: '', discriminacao: '' })
+  const [substituindo, setSubstituindo] = useState(false)
   const previewRef = useRef(null)
 
   useEffect(() => { buscarNotas() }, [mes, ano, campoFiltroData, filtroAmbiente])
@@ -158,6 +163,78 @@ export default function NfseEmitir() {
       alert(`Erro ao enviar: ${err.message}`)
     } finally {
       setEnviandoId(null)
+    }
+  }
+
+  // Cancelamento/substituição têm efeito fiscal real perante a Prefeitura
+  // (ver comentário em api/webiss-nfse.js) — pedido de confirmação extra,
+  // digitando uma palavra, quando a nota é de produção (mesmo padrão já
+  // usado pra emissão real em Clientes.jsx).
+  async function cancelarNota(nota) {
+    if (!window.confirm(`Cancelar a NFS-e nº ${nota.numero_nfse} de ${nota.clientes?.nome || '—'}?\n\nEsta ação tem efeito fiscal real perante a Prefeitura e não pode ser desfeita.`)) return
+    if (nota.ambiente === 'producao') {
+      const digitado = window.prompt('Nota REAL (produção). Digite CANCELAR para confirmar:')
+      if (digitado !== 'CANCELAR') { alert('Confirmação incorreta — cancelamento não realizado.'); return }
+    }
+    setCancelandoId(nota.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/nfse-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ acao: 'cancelar', notaId: nota.id }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao cancelar')
+      alert(data.aviso || 'NFS-e cancelada com sucesso.')
+      buscarNotas()
+    } catch (err) {
+      alert(`Erro ao cancelar: ${err.message}`)
+    } finally {
+      setCancelandoId(null)
+    }
+  }
+
+  function abrirSubstituir(nota) {
+    setNotaSubstituir(nota)
+    setFormSubstituir({ valorServicos: nota.valor_servicos || '', discriminacao: nota.discriminacao || '' })
+  }
+
+  async function confirmarSubstituir() {
+    const nota = notaSubstituir
+    if (!formSubstituir.discriminacao || formSubstituir.discriminacao.trim().length < 10) {
+      alert('A discriminação precisa ter pelo menos 10 caracteres.')
+      return
+    }
+    if (!window.confirm(`Substituir a NFS-e nº ${nota.numero_nfse}? A nota atual será cancelada e uma nova será emitida no lugar.\n\nEsta ação tem efeito fiscal real perante a Prefeitura e não pode ser desfeita.`)) return
+    if (nota.ambiente === 'producao') {
+      const digitado = window.prompt('Nota REAL (produção). Digite SUBSTITUIR para confirmar:')
+      if (digitado !== 'SUBSTITUIR') { alert('Confirmação incorreta — substituição não realizada.'); return }
+    }
+    setSubstituindo(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/nfse-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          acao: 'substituir',
+          notaId: nota.id,
+          dados: {
+            valorServicos: parseFloat(formSubstituir.valorServicos) || 0,
+            discriminacao: formSubstituir.discriminacao,
+          },
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao substituir')
+      alert(`Nova NFS-e emitida em substituição!\nNúmero: ${data.numero}\nCódigo de verificação: ${data.codigoVerificacao}`)
+      setNotaSubstituir(null)
+      buscarNotas()
+    } catch (err) {
+      alert(`Erro ao substituir: ${err.message}`)
+    } finally {
+      setSubstituindo(false)
     }
   }
 
@@ -410,6 +487,16 @@ export default function NfseEmitir() {
                         <button onClick={() => enviarPorEmail(n)} disabled={enviandoId === n.id || !n.clientes?.email} className="btn-ghost btn-sm p-1.5 text-brand-600" title="Enviar PDF + XML por e-mail">
                           {enviandoId === n.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                         </button>
+                        {n.status === 'emitida' && (
+                          <>
+                            <button onClick={() => abrirSubstituir(n)} className="btn-ghost btn-sm p-1.5 text-amber-600" title="Substituir por uma nova NFS-e">
+                              <Repeat className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => cancelarNota(n)} disabled={cancelandoId === n.id} className="btn-ghost btn-sm p-1.5 text-red-600" title="Cancelar NFS-e">
+                              {cancelandoId === n.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -431,6 +518,38 @@ export default function NfseEmitir() {
           </div>
         )}
       </div>
+
+      {notaSubstituir && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setNotaSubstituir(null)}>
+          <div className="modal">
+            <div className="modal-header">
+              <h2 className="text-lg font-semibold text-gray-900">Substituir NFS-e nº {notaSubstituir.numero_nfse}</h2>
+              <button onClick={() => setNotaSubstituir(null)} className="btn-ghost p-2"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <span>A nota atual será <strong>cancelada</strong> e uma nova NFS-e será emitida com os dados abaixo, para o mesmo cliente.</span>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Valor dos Serviços (R$)</label>
+                <input type="number" step="0.01" className="input" value={formSubstituir.valorServicos} onChange={(e) => setFormSubstituir((f) => ({ ...f, valorServicos: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Discriminação do serviço</label>
+                <textarea className="textarea" rows={3} value={formSubstituir.discriminacao} onChange={(e) => setFormSubstituir((f) => ({ ...f, discriminacao: e.target.value }))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setNotaSubstituir(null)} className="btn-secondary">Cancelar</button>
+              <button onClick={confirmarSubstituir} disabled={substituindo} className="btn-primary">
+                {substituindo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Repeat className="w-4 h-4" />}
+                {substituindo ? 'Substituindo...' : 'Confirmar substituição'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="border-t border-gray-200 pt-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — WebISS (homologação)</h2>

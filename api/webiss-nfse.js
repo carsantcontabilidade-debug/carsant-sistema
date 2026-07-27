@@ -259,6 +259,99 @@ export function montarDpsAssinada(dados, credenciais = WEBISS_CREDENCIAIS) {
   return montarGerarNfseEnvio(dpsAssinada);
 }
 
+// ─── Cancelamento e Substituição (ABRASF v2.02) ────────────────────────────
+//
+// IMPORTANTE: diferente das consultas/emissão (já confirmadas com NFS-e
+// reais da CARSANT), o formato exato de CancelarNfse/SubstituirNfse deste
+// WebISS ainda NÃO foi testado neste projeto — a estrutura abaixo segue o
+// padrão público ABRASF 2.02 (o mesmo que rege GerarNfse), mas precisa de
+// um teste real em homologação antes de confiar em produção. Se o WebISS
+// recusar, o erro devolvido por enviarOperacaoWebiss já vem com o XML
+// completo da resposta (ver "throw" mais abaixo no arquivo), suficiente
+// pra ajustar o formato.
+
+// Código de motivo do cancelamento (tabela ABRASF): 1-Erro na emissão,
+// 2-Serviço não prestado, 3-Erro de assinatura, 4-Duplicidade da nota,
+// 9-Outros. "1" é o padrão mais comum pra uma correção/reemissão.
+const CODIGO_CANCELAMENTO_PADRAO = '1';
+
+// nota = { ambiente, numero } — o suficiente pra identificar a NFS-e já
+// emitida que será cancelada/substituída.
+function montarIdentificacaoNfseXml(nota) {
+  const codigoMunicipio = codigoMunicipioPrestador(nota.ambiente);
+  return `<IdentificacaoNfse>` +
+    `<Numero>${nota.numero}</Numero>` +
+    `<Cnpj>${CARSANT.cnpj}</Cnpj>` +
+    `<InscricaoMunicipal>${CARSANT.inscricaoMunicipal}</InscricaoMunicipal>` +
+    `<CodigoMunicipio>${codigoMunicipio}</CodigoMunicipio>` +
+  `</IdentificacaoNfse>`;
+}
+
+function montarInfPedidoCancelamento(nota, idTag, codigoCancelamento) {
+  return `<InfPedidoCancelamento xmlns="http://www.abrasf.org.br/nfse.xsd" Id="${idTag}">` +
+    montarIdentificacaoNfseXml(nota) +
+    `<CodigoCancelamento>${codigoCancelamento || CODIGO_CANCELAMENTO_PADRAO}</CodigoCancelamento>` +
+  `</InfPedidoCancelamento>`;
+}
+
+// Mesma técnica de assinatura de assinarInfDeclaracao, mas o elemento
+// irmão da <Signature> aqui é <Pedido> (não <Rps>) — o tipo
+// tcPedidoCancelamento do XSD ABRASF define InfPedidoCancelamento
+// seguido de Signature, ambos dentro de <Pedido>.
+function assinarInfPedidoCancelamento(infXml, idTag, { certPem, keyPem }) {
+  const sig = new SignedXml({
+    privateKey: keyPem,
+    publicCert: certPem,
+    canonicalizationAlgorithm: 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
+    signatureAlgorithm: 'http://www.w3.org/2000/09/xmldsig#rsa-sha1',
+  });
+  sig.addReference({
+    xpath: `//*[@Id='${idTag}']`,
+    uri: `#${idTag}`,
+    digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
+    transforms: [
+      'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+      'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
+    ],
+  });
+  const pedidoXml = `<Pedido>${infXml}</Pedido>`;
+  sig.computeSignature(pedidoXml, {
+    location: { reference: `//*[@Id='${idTag}']`, action: 'after' },
+  });
+  return sig.getSignedXml();
+}
+
+export function montarCancelarNfseEnvio(nota, credenciais = WEBISS_CREDENCIAIS, codigoCancelamento) {
+  const idTag = `cancelamento_${CARSANT.cnpj}_${nota.numero}`;
+  const infXml = montarInfPedidoCancelamento(nota, idTag, codigoCancelamento);
+  const pedidoAssinado = assinarInfPedidoCancelamento(infXml, idTag, credenciais);
+  return `<CancelarNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">${pedidoAssinado}</CancelarNfseEnvio>`;
+}
+
+export async function enviarCancelarNfse(envelopeXml, ambiente = 'homologacao') {
+  return enviarOperacaoWebiss('CancelarNfse', envelopeXml, ambiente);
+}
+
+// notaAntiga = { ambiente, numero } (a NFS-e sendo substituída).
+// dadosNovaDps = mesmo shape de montarInfDeclaracaoDps (a NFS-e nova).
+export function montarSubstituirNfseEnvio(notaAntiga, dadosNovaDps, credenciais = WEBISS_CREDENCIAIS, codigoCancelamento) {
+  const idTagCancelamento = `substituicao_${CARSANT.cnpj}_${notaAntiga.numero}`;
+  const infCancelamentoXml = montarInfPedidoCancelamento(notaAntiga, idTagCancelamento, codigoCancelamento);
+  const pedidoAssinado = assinarInfPedidoCancelamento(infCancelamentoXml, idTagCancelamento, credenciais);
+
+  const idTagDps = `dps_${CARSANT.cnpj}_${dadosNovaDps.rpsSerie || 1}_${dadosNovaDps.rpsNumero}`;
+  const infDpsXml = montarInfDeclaracaoDps(dadosNovaDps);
+  const rpsAssinado = assinarInfDeclaracao(infDpsXml, idTagDps, credenciais);
+
+  return `<SubstituirNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">` +
+    `<SubstituicaoNfse>${pedidoAssinado}${rpsAssinado}</SubstituicaoNfse>` +
+  `</SubstituirNfseEnvio>`;
+}
+
+export async function enviarSubstituirNfse(envelopeXml, ambiente = 'homologacao') {
+  return enviarOperacaoWebiss('SubstituirNfse', envelopeXml, ambiente);
+}
+
 // ─── Transporte SOAP — confirmado via WSDL (nfse.wsdl) de cada ambiente ────
 //
 // Elemento nfseCabecMsg/nfseDadosMsg são strings simples no WSDL (ASP.NET
