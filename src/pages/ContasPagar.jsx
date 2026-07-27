@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, CheckCircle, RefreshCw, Edit2, Trash2, Search, Loader2, X, Save, Upload, Paperclip, FileSearch } from 'lucide-react'
-import { analisarXmlNota, analisarPdfBoleto } from '../lib/importarConta'
+import { analisarXmlNota, analisarPdfBoleto, PdfProtegidoPorSenha } from '../lib/importarConta'
 
 const CATEGORIAS = ['Aluguel','Salários / Pró-labore','Sistemas / Softwares','Contador','Energia / Água / Internet','Impostos','Comissões','Outras']
 const MES_NOMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -119,7 +119,24 @@ export default function ContasPagar() {
         if (!dados.valor) setAvisoImportacao('Não consegui encontrar o valor no XML — confira antes de salvar.')
       } else if (ehPdf) {
         const buffer = await file.arrayBuffer()
-        const dados = await analisarPdfBoleto(buffer)
+        let senha
+        let dados
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          try {
+            dados = await analisarPdfBoleto(buffer, senha)
+            break
+          } catch (err) {
+            if (!(err instanceof PdfProtegidoPorSenha)) throw err
+            senha = window.prompt(
+              tentativa === 0
+                ? 'Este PDF está protegido por senha. Digite a senha (em faturas de empresa, geralmente é o CNPJ, só números ou com pontuação):'
+                : 'Senha incorreta. Tente de novo (ou cancele pra preencher manualmente):'
+            )
+            if (!senha) { setAvisoImportacao('PDF protegido por senha — preencha os dados manualmente abaixo.'); return }
+          }
+        }
+        if (!dados) { setAvisoImportacao('Não foi possível abrir este PDF (senha incorreta muitas vezes) — preencha manualmente.'); return }
+
         setFormImportar({
           descricao: dados.fornecedor ? `Boleto — ${dados.fornecedor}` : 'Boleto',
           categoria: '',

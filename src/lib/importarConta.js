@@ -91,9 +91,21 @@ export function analisarXmlNota(xmlTexto) {
 
 // ─── PDF (boleto: FGTS, INSS, água, luz, telefone, plano de saúde...) ──────
 
-async function extrairTextoPdf(arrayBuffer) {
+// Muitas faturas (telecom, concessionárias) vêm com o PDF protegido por
+// senha — geralmente o CNPJ do destinatário. Quando não vem senha, o
+// pdfjs-dist recusa com um PasswordException (err.name), que é tratado
+// separadamente na tela pra pedir a senha ao usuário, em vez de só falhar.
+export class PdfProtegidoPorSenha extends Error {}
+
+async function extrairTextoPdf(arrayBuffer, senha) {
   const pdfjsLib = await carregarPdfjs()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  let pdf
+  try {
+    pdf = await pdfjsLib.getDocument({ data: arrayBuffer, password: senha || undefined }).promise
+  } catch (err) {
+    if (err?.name === 'PasswordException') throw new PdfProtegidoPorSenha(senha ? 'Senha incorreta.' : 'Este PDF está protegido por senha.')
+    throw err
+  }
   let textoCompleto = ''
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
@@ -176,8 +188,8 @@ function buscarFornecedor(texto) {
   return { cnpj: cnpjMatch?.[1] || '', fornecedor: nomeCandidato || '' }
 }
 
-export async function analisarPdfBoleto(arrayBuffer) {
-  const texto = await extrairTextoPdf(arrayBuffer)
+export async function analisarPdfBoleto(arrayBuffer, senha) {
+  const texto = await extrairTextoPdf(arrayBuffer, senha)
   const linha = encontrarLinhaDigitavel(texto)
   const decodificado = linha ? decodificarBoleto(linha) : null
   const vencimentoTexto = buscarVencimentoNoTexto(texto)
