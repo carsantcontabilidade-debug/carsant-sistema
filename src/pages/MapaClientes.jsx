@@ -25,11 +25,15 @@ L.Marker.prototype.options.icon = L.icon({
   shadowSize: [41, 41],
 })
 
-// Escala de cor simples (azul claro -> azul escuro da marca) proporcional
-// à quantidade de clientes em relação ao maior valor do nível atual.
+// Escala de cor (azul claro -> azul escuro da marca) proporcional à
+// quantidade de clientes em relação ao maior valor do nível atual. Usa
+// um piso mínimo de 40% pra qualquer lugar com pelo menos 1 cliente —
+// sem isso, num estado como a Bahia (Feira de Santana com 72 vs.
+// cidades vizinhas com 1-2), a diferença ficava praticamente invisível
+// e dava a impressão de que o clique não reagia a nada.
 function corPorQuantidade(qtd, max) {
   if (!qtd) return '#f3f4f6'
-  const t = max > 0 ? qtd / max : 0
+  const t = Math.max(0.4, max > 0 ? qtd / max : 0)
   const de = [219, 234, 254] // brand-100
   const para = [26, 86, 219] // brand-600
   const rgb = de.map((c, i) => Math.round(c + (para[i] - c) * t))
@@ -53,18 +57,6 @@ export default function MapaClientes() {
     buscarMalhaBrasil().then(setMalhaBrasil).catch((err) => alert(err.message))
   }, [])
 
-  // DIAGNÓSTICO TEMPORÁRIO: confirma se o mapa recebe cliques em
-  // qualquer lugar (não só nos polígonos), pra isolar se o problema é
-  // no GeoJSON ou em algo mais básico do mapa. Remover depois de achar
-  // a causa do "clique no estado não faz nada".
-  useEffect(() => {
-    if (!mapRef.current) return
-    const handler = (e) => {
-      alert(`[debug] Mapa recebeu clique em ${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`)
-    }
-    mapRef.current.on('click', handler)
-    return () => mapRef.current?.off('click', handler)
-  }, [malhaBrasil])
 
   async function carregarClientes() {
     setLoading(true)
