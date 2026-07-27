@@ -53,6 +53,19 @@ export default function MapaClientes() {
     buscarMalhaBrasil().then(setMalhaBrasil).catch((err) => alert(err.message))
   }, [])
 
+  // DIAGNÓSTICO TEMPORÁRIO: confirma se o mapa recebe cliques em
+  // qualquer lugar (não só nos polígonos), pra isolar se o problema é
+  // no GeoJSON ou em algo mais básico do mapa. Remover depois de achar
+  // a causa do "clique no estado não faz nada".
+  useEffect(() => {
+    if (!mapRef.current) return
+    const handler = (e) => {
+      alert(`[debug] Mapa recebeu clique em ${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`)
+    }
+    mapRef.current.on('click', handler)
+    return () => mapRef.current?.off('click', handler)
+  }, [malhaBrasil])
+
   async function carregarClientes() {
     setLoading(true)
     const { data } = await supabase
