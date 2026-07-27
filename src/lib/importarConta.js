@@ -106,11 +106,27 @@ async function extrairTextoPdf(arrayBuffer, senha) {
     if (err?.name === 'PasswordException') throw new PdfProtegidoPorSenha(senha ? 'Senha incorreta.' : 'Este PDF está protegido por senha.')
     throw err
   }
+  // Agrupa os itens de texto em linhas de verdade, comparando a posição Y
+  // de um item pro próximo — juntar tudo com um espaço só (ignorando o
+  // layout) grudava blocos de texto diferentes (ex: nome do Cedente com o
+  // endereço do Sacado do lado, ou a linha digitável com o texto vizinho),
+  // o que quebrava tanto a busca da linha digitável quanto a do fornecedor.
   let textoCompleto = ''
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
-    textoCompleto += content.items.map((item) => item.str).join(' ') + '\n'
+    let ultimaY = null
+    let linha = ''
+    for (const item of content.items) {
+      const y = item.transform[5]
+      if (ultimaY !== null && Math.abs(y - ultimaY) > 2) {
+        textoCompleto += linha.trim() + '\n'
+        linha = ''
+      }
+      linha += item.str + ' '
+      ultimaY = y
+    }
+    textoCompleto += linha.trim() + '\n'
   }
   return textoCompleto
 }
@@ -177,13 +193,30 @@ function buscarVencimentoNoTexto(texto) {
   return generico ? normalizarDataBr(generico[1]) : null
 }
 
-// Heurística: primeira linha com letras suficientes que não seja um
-// rótulo genérico do boleto — tende a ser o nome do beneficiário/emissor
-// no topo do documento. Não é garantido, por isso sempre revisar.
+// Prioridade 1: rótulo explícito "Cedente"/"Beneficiário" (quem EMITE a
+// cobrança — o fornecedor de verdade) — bem mais confiável que adivinhar
+// pela primeira linha, que às vezes pega o "Sacado"/"Pagador" (quem está
+// sendo cobrado) por estar posicionado antes no texto extraído.
+// Prioridade 2 (fallback): primeira linha com letras suficientes que não
+// seja um rótulo genérico do boleto. Nunca é garantido, por isso sempre
+// revisar antes de salvar.
 function buscarFornecedor(texto) {
   const cnpjMatch = texto.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/)
-  const linhas = texto.split(/\n|(?=\S{2,}\s{3,})/).map((l) => l.trim()).filter(Boolean)
-  const rotulosGenericos = /^(boleto|recibo|via|banco|pagador|sacado|beneficiário|cedente|vencimento|valor|documento|n[uú]mero|nosso n[uú]mero|ag[eê]ncia|c[oó]digo)/i
+
+  const linhas = texto.split('\n').map((l) => l.trim()).filter(Boolean)
+  const idxCedente = linhas.findIndex((l) => /^(Cedente|Benefici[aá]rio)\b/i.test(l))
+  if (idxCedente !== -1) {
+    // O nome normalmente vem depois do rótulo, na mesma linha (ex:
+    // "Cedente: CLARO S.A. CNPJ 40.432.544/...") ou logo na linha seguinte.
+    const mesmaLinha = linhas[idxCedente].replace(/^(Cedente|Benefici[aá]rio)\b[:\s]*/i, '').trim()
+    const candidato = mesmaLinha.length > 3 ? mesmaLinha : linhas[idxCedente + 1]
+    if (candidato) {
+      const nomeLimpo = candidato.replace(/\s*(CNPJ|CPF)[:\s]*[\d.\-/]+.*$/i, '').trim()
+      return { cnpj: cnpjMatch?.[1] || '', fornecedor: nomeLimpo || candidato }
+    }
+  }
+
+  const rotulosGenericos = /^(boleto|recibo|via|banco|pagador|sacado|benefici[aá]rio|cedente|vencimento|valor|documento|n[uú]mero|nosso n[uú]mero|ag[eê]ncia|c[oó]digo)/i
   const nomeCandidato = linhas.find((l) => /[A-Za-zÀ-ÿ]{4,}/.test(l) && !rotulosGenericos.test(l))
   return { cnpj: cnpjMatch?.[1] || '', fornecedor: nomeCandidato || '' }
 }
@@ -202,5 +235,6 @@ export async function analisarPdfBoleto(arrayBuffer, senha) {
     cnpj: cnpj ? formatarCnpj(cnpj) : '',
     linhaDigitavel: decodificado?.linhaDigitavel || null,
     tipoBoleto: decodificado?.tipo || null,
+    textoExtraido: texto,
   }
 }

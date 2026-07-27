@@ -29,6 +29,7 @@ export default function ContasPagar() {
   const [analisando, setAnalisando] = useState(false)
   const [formImportar, setFormImportar] = useState(emptyImportForm)
   const [avisoImportacao, setAvisoImportacao] = useState('')
+  const [textoExtraidoPdf, setTextoExtraidoPdf] = useState('')
   const [salvandoImportacao, setSalvandoImportacao] = useState(false)
 
   useEffect(() => { fetchDados() }, [mesAtivo, anoAtivo])
@@ -85,6 +86,7 @@ export default function ContasPagar() {
     setArquivoImportado(null)
     setFormImportar(emptyImportForm)
     setAvisoImportacao('')
+    setTextoExtraidoPdf('')
     setModalImportarOpen(true)
   }
 
@@ -146,6 +148,7 @@ export default function ContasPagar() {
           recorrencia: 'unica',
           obs: '',
         })
+        setTextoExtraidoPdf(dados.textoExtraido || '')
         const avisos = []
         if (!dados.linhaDigitavel) avisos.push('Não encontrei a linha digitável neste PDF — confira o valor e o vencimento manualmente.')
         else if (dados.tipoBoleto === 'arrecadacao' && !dados.vencimento) avisos.push('Esta é uma guia de arrecadação (FGTS/INSS/tributo) — o vencimento não vem no código de barras, confira a data no documento.')
@@ -319,6 +322,13 @@ export default function ContasPagar() {
                   <FileSearch className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>{avisoImportacao}</span>
                 </div>
+              )}
+
+              {textoExtraidoPdf && !analisando && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Ver texto lido do PDF (diagnóstico)</summary>
+                  <pre className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11px]">{textoExtraidoPdf}</pre>
+                </details>
               )}
 
               {arquivoImportado && !analisando && (
