@@ -69,6 +69,9 @@ export default function NfseEmitir() {
   const hoje = new Date()
   const [mes, setMes] = useState(hoje.getMonth() + 1)
   const [ano, setAno] = useState(hoje.getFullYear())
+  const [campoFiltroData, setCampoFiltroData] = useState('competencia') // 'competencia' | 'data_emissao'
+  const [filtroAmbiente, setFiltroAmbiente] = useState('producao') // 'todos' | 'producao' | 'homologacao'
+  const [filtroCnpj, setFiltroCnpj] = useState('')
   const [notas, setNotas] = useState([])
   const [carregandoNotas, setCarregandoNotas] = useState(false)
   const [enviandoId, setEnviandoId] = useState(null)
@@ -77,19 +80,21 @@ export default function NfseEmitir() {
   const [gerandoRelatorioPdf, setGerandoRelatorioPdf] = useState(false)
   const previewRef = useRef(null)
 
-  useEffect(() => { buscarNotas() }, [mes, ano])
+  useEffect(() => { buscarNotas() }, [mes, ano, campoFiltroData, filtroAmbiente])
 
   async function buscarNotas() {
     setCarregandoNotas(true)
     try {
       const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`
       const fim = new Date(ano, mes, 0).toISOString().slice(0, 10)
-      const { data, error } = await supabase
+      let query = supabase
         .from('notas_fiscais')
         .select('*, clientes(nome, email, cnpj)')
-        .gte('competencia', inicio)
-        .lte('competencia', fim)
-        .order('competencia', { ascending: false })
+        .gte(campoFiltroData, inicio)
+        .lte(campoFiltroData, campoFiltroData === 'data_emissao' ? `${fim}T23:59:59` : fim)
+        .order(campoFiltroData, { ascending: false })
+      if (filtroAmbiente !== 'todos') query = query.eq('ambiente', filtroAmbiente)
+      const { data, error } = await query
       if (error) throw error
       setNotas(data || [])
     } catch (err) {
@@ -98,6 +103,12 @@ export default function NfseEmitir() {
       setCarregandoNotas(false)
     }
   }
+
+  const notasFiltradas = notas.filter((n) => {
+    if (!filtroCnpj) return true
+    const alvo = filtroCnpj.replace(/\D/g, '')
+    return (n.clientes?.cnpj || '').replace(/\D/g, '').includes(alvo)
+  })
 
   function baixarXmlIndividual(nota) {
     if (!nota.xml_resposta) { alert('Esta nota não tem XML salvo.'); return }
@@ -151,7 +162,7 @@ export default function NfseEmitir() {
   }
 
   async function baixarXmlEmLote() {
-    const comXml = notas.filter((n) => n.xml_resposta)
+    const comXml = notasFiltradas.filter((n) => n.xml_resposta)
     if (comXml.length === 0) { alert('Nenhuma nota do período selecionado tem XML salvo.'); return }
     setExportandoLote(true)
     try {
@@ -195,7 +206,7 @@ export default function NfseEmitir() {
   }
 
   const anosDisponiveis = [anoAtual - 1, anoAtual, anoAtual + 1]
-  const totalNotas = notas.reduce((s, n) => s + Number(n.valor_servicos || 0), 0)
+  const totalNotas = notasFiltradas.reduce((s, n) => s + Number(n.valor_servicos || 0), 0)
 
   if (profile?.role !== 'gestor') {
     return <div className="p-8 text-center text-gray-500">Acesso restrito ao gestor.</div>
@@ -300,12 +311,19 @@ export default function NfseEmitir() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
-        <p className="text-sm text-gray-500 mt-1">Notas emitidas, filtradas por competência, com exportação e envio ao cliente.</p>
+        <p className="text-sm text-gray-500 mt-1">Notas emitidas, filtradas por competência ou data de emissão, com exportação e envio ao cliente.</p>
       </div>
 
       <div className="card p-5 space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap gap-3 items-end">
+            <div className="form-group">
+              <label className="form-label">Filtrar por</label>
+              <select className="select" value={campoFiltroData} onChange={(e) => setCampoFiltroData(e.target.value)}>
+                <option value="competencia">Competência</option>
+                <option value="data_emissao">Data de emissão</option>
+              </select>
+            </div>
             <div className="form-group">
               <label className="form-label">Mês</label>
               <select className="select" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
@@ -318,12 +336,29 @@ export default function NfseEmitir() {
                 {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
+            <div className="form-group">
+              <label className="form-label">Ambiente</label>
+              <select className="select" value={filtroAmbiente} onChange={(e) => setFiltroAmbiente(e.target.value)}>
+                <option value="producao">Só notas reais (produção)</option>
+                <option value="homologacao">Só notas de teste (homologação)</option>
+                <option value="todos">Todas</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">CPF/CNPJ do tomador</label>
+              <input
+                className="input"
+                value={filtroCnpj}
+                onChange={(e) => setFiltroCnpj(e.target.value)}
+                placeholder="Filtrar por CPF ou CNPJ"
+              />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={exportarRelatorioPdf} disabled={gerandoRelatorioPdf || notas.length === 0} className="btn-secondary btn-sm gap-1.5">
+            <button onClick={exportarRelatorioPdf} disabled={gerandoRelatorioPdf || notasFiltradas.length === 0} className="btn-secondary btn-sm gap-1.5">
               {gerandoRelatorioPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Exportar relatório em PDF
             </button>
-            <button onClick={baixarXmlEmLote} disabled={exportandoLote || notas.length === 0} className="btn-secondary btn-sm gap-1.5">
+            <button onClick={baixarXmlEmLote} disabled={exportandoLote || notasFiltradas.length === 0} className="btn-secondary btn-sm gap-1.5">
               {exportandoLote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />} Baixar XML em lote
             </button>
           </div>
@@ -336,11 +371,13 @@ export default function NfseEmitir() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Cliente</th><th>Número</th><th>Competência</th><th>Valor</th><th>Status</th><th>Ações</th>
+                  <th>Cliente</th><th>Número</th><th>Competência</th><th>Emissão</th>
+                  {filtroAmbiente === 'todos' && <th>Ambiente</th>}
+                  <th>Valor</th><th>Status</th><th>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {notas.map((n) => (
+                {notasFiltradas.map((n) => (
                   <tr key={n.id}>
                     <td>
                       <div className="font-medium text-gray-900">{n.clientes?.nome || '—'}</div>
@@ -348,6 +385,14 @@ export default function NfseEmitir() {
                     </td>
                     <td>{n.numero_nfse || '—'}</td>
                     <td>{fmtData(n.competencia)}</td>
+                    <td>{n.data_emissao ? new Date(n.data_emissao).toLocaleDateString('pt-BR') : '—'}</td>
+                    {filtroAmbiente === 'todos' && (
+                      <td>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${n.ambiente === 'producao' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {n.ambiente === 'producao' ? 'Real' : 'Teste'}
+                        </span>
+                      </td>
+                    )}
                     <td className="font-medium">{fmtValor(n.valor_servicos)}</td>
                     <td>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_NOTA[n.status]?.cor || 'bg-gray-100 text-gray-600'}`}>
@@ -369,14 +414,14 @@ export default function NfseEmitir() {
                     </td>
                   </tr>
                 ))}
-                {notas.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-500">Nenhuma nota fiscal nesta competência</td></tr>
+                {notasFiltradas.length === 0 && (
+                  <tr><td colSpan={filtroAmbiente === 'todos' ? 8 : 7} className="text-center py-8 text-gray-500">Nenhuma nota fiscal encontrada</td></tr>
                 )}
               </tbody>
-              {notas.length > 0 && (
+              {notasFiltradas.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={3} className="text-right font-semibold text-gray-700">Total</td>
+                    <td colSpan={filtroAmbiente === 'todos' ? 5 : 4} className="text-right font-semibold text-gray-700">Total</td>
                     <td className="font-bold text-gray-900">{fmtValor(totalNotas)}</td>
                     <td colSpan={2}></td>
                   </tr>

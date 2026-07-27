@@ -110,7 +110,7 @@ export default async function handler(req, res) {
       dataEmissaoRps: new Date(),
     });
     const resultadoXml = await enviarGerarNfse(envelope, ambienteFinal);
-    const { numero, codigoVerificacao, chaveAcesso } = parseNfseResposta(resultadoXml);
+    const { numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml);
 
     const { error: insertError } = await admin.from('notas_fiscais').insert({
       cliente_id: clienteId || null,
@@ -122,6 +122,7 @@ export default async function handler(req, res) {
       codigo_verificacao: codigoVerificacao,
       chave_acesso: chaveAcesso,
       competencia: dados.competencia,
+      data_emissao: dataEmissao || null,
       valor_servicos: dados.valorServicos,
       discriminacao: dados.discriminacao,
       status: 'emitida',
