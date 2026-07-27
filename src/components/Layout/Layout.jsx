@@ -4,12 +4,13 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings, ShieldCheck
+  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings, ShieldCheck, Map
 } from 'lucide-react'
 
 const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',      somenteGestor: false },
   { to: '/clientes',     icon: Users,            label: 'Clientes',       somenteGestor: false },
+  { to: '/mapa',         icon: Map,              label: 'Mapa',           somenteGestor: true },
   {
     group: 'financeiro',
     icon: Wallet,

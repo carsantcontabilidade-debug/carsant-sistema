@@ -22,6 +22,7 @@ const NfseEmitir = lazy(() => import('./pages/NfseEmitir'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 const Certidoes = lazy(() => import('./pages/Certidoes'))
+const MapaClientes = lazy(() => import('./pages/MapaClientes'))
 const DefinirSenha = lazy(() => import('./pages/DefinirSenha'))
 const PortalLogin = lazy(() => import('./pages/portal/PortalLogin'))
 const PortalDefinirSenha = lazy(() => import('./pages/portal/PortalDefinirSenha'))
@@ -110,6 +111,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="clientes" element={<Clientes />} />
+          <Route path="mapa" element={<GestorRoute><MapaClientes /></GestorRoute>} />
           <Route path="tarefas" element={<Tarefas />} />
           <Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
           <Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
