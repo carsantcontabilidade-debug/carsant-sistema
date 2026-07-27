@@ -343,6 +343,17 @@ export async function enviarCancelarNfse(envelopeXml, ambiente = 'homologacao') 
 // com "[E225] O documento de substituição não está assinado digitalmente"
 // (pesquisa nos manuais oficiais ABRASF confirmou o campo Signature extra
 // no tipo tcInfSubstituicaoNfse).
+//
+// IMPORTANTE: diferente de assinarInfPedidoCancelamento/assinarInfDeclaracao
+// (onde o elemento com Id é filho de um wrapper — Pedido/Rps — que vira a
+// raiz do documento assinado), aqui teríamos SubstituicaoNfse com Id como
+// a PRÓPRIA raiz — e xml-crypto usa Document.insertBefore quando a
+// referência aponta pro elemento raiz, o que falha com "Hierarchy request
+// error: Only one element can be added and only after doctype" (documento
+// XML só pode ter um elemento raiz; reproduzido e confirmado localmente
+// antes de corrigir). Por isso a assinatura é calculada no envelope
+// COMPLETO (SubstituirNfseEnvio como raiz), com SubstituicaoNfse como
+// filho — a mesma técnica, só um nível abaixo.
 function assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTag, { certPem, keyPem }) {
   const sig = new SignedXml({
     privateKey: keyPem,
@@ -359,11 +370,11 @@ function assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTag, { certPem, 
       'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
     ],
   });
-  const substituicaoXml = `<SubstituicaoNfse Id="${idTag}">${pedidoAssinado}${rpsAssinado}</SubstituicaoNfse>`;
-  sig.computeSignature(substituicaoXml, {
+  const envelopeXml = `<SubstituirNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd"><SubstituicaoNfse Id="${idTag}">${pedidoAssinado}${rpsAssinado}</SubstituicaoNfse></SubstituirNfseEnvio>`;
+  sig.computeSignature(envelopeXml, {
     location: { reference: `//*[@Id='${idTag}']`, action: 'after' },
   });
-  return sig.getSignedXml();
+  return sig.getSignedXml(); // já é o envelope inteiro, assinado
 }
 
 // notaAntiga = { ambiente, numero } (a NFS-e sendo substituída).
@@ -378,9 +389,7 @@ export function montarSubstituirNfseEnvio(notaAntiga, dadosNovaDps, credenciais 
   const rpsAssinado = assinarInfDeclaracao(infDpsXml, idTagDps, credenciais);
 
   const idTagSubstituicao = `substituicaonfse_${CARSANT.cnpj}_${notaAntiga.numero}`;
-  const substituicaoAssinada = assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTagSubstituicao, credenciais);
-
-  return `<SubstituirNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">${substituicaoAssinada}</SubstituirNfseEnvio>`;
+  return assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTagSubstituicao, credenciais);
 }
 
 export async function enviarSubstituirNfse(envelopeXml, ambiente = 'homologacao') {
