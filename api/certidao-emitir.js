@@ -40,8 +40,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Variáveis do Supabase não configuradas no servidor.' });
   }
 
-  const { clienteId, tipo } = req.body || {};
-  if (!clienteId || (tipo !== 'municipal' && tipo !== 'estadual')) {
+  const { tipo } = req.body || {};
+  let { clienteId } = req.body || {};
+  if (tipo !== 'municipal' && tipo !== 'estadual') {
     return res.status(400).json({ error: 'Este tipo de certidão ainda não tem emissão automática.' });
   }
 
@@ -58,9 +59,20 @@ export default async function handler(req, res) {
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // Staff pode emitir para qualquer cliente informado. Cliente do
+  // Portal (sem linha em profiles) só pode emitir a PRÓPRIA certidão —
+  // ignora qualquer clienteId vindo do corpo da requisição e usa o
+  // cliente vinculado à própria sessão, pra não dar brecha de emitir
+  // certidão de outra empresa.
   const { data: perfil } = await admin.from('profiles').select('id').eq('id', userData.user.id).maybeSingle();
   if (!perfil) {
-    return res.status(403).json({ error: 'Apenas a equipe pode emitir certidões.' });
+    const { data: clientePortal } = await admin.from('clientes').select('id').eq('auth_user_id', userData.user.id).maybeSingle();
+    if (!clientePortal) {
+      return res.status(403).json({ error: 'Não autorizado.' });
+    }
+    clienteId = clientePortal.id;
+  } else if (!clienteId) {
+    return res.status(400).json({ error: 'Campo "clienteId" é obrigatório.' });
   }
 
   const { data: cliente } = await admin.from('clientes').select('id, cnpj, uf, codigo_municipio_ibge').eq('id', clienteId).single();

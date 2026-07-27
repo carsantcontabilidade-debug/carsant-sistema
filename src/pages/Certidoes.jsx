@@ -3,30 +3,9 @@ import { supabase } from '../lib/supabase'
 import { sanitizarNomeArquivo } from '../lib/storage'
 import {
   TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais,
-  PORTAL_OFICIAL, MUNICIPIOS_AUTOMATIZADOS, ESTADOS_AUTOMATIZADOS,
-  PORTAL_OFICIAL_ESTADUAL, PORTAL_OFICIAL_MUNICIPAL,
+  temAutomacao, portalDeApoio,
 } from '../lib/certidoes'
 import { Loader2, Search, FileText, Zap, ExternalLink } from 'lucide-react'
-
-// Municipal e Estadual só têm emissão automática de verdade pra alguns
-// lugares específicos (ver MUNICIPIOS_AUTOMATIZADOS/ESTADOS_AUTOMATIZADOS
-// em lib/certidoes.js) — checar por cliente, não só pelo tipo, senão o
-// botão de raio aparece pra cidade que não tem suporte nenhum.
-function temAutomacao(cliente, tipo) {
-  if (tipo === 'municipal') return MUNICIPIOS_AUTOMATIZADOS.includes(cliente.codigo_municipio_ibge)
-  if (tipo === 'estadual') return ESTADOS_AUTOMATIZADOS.includes(cliente.uf)
-  return false
-}
-
-// Link de apoio (abrir portal oficial) pro cliente+tipo, quando não
-// existe automação — igual ao padrão já usado em Federal/FGTS/
-// Trabalhista/Falência.
-function portalDeApoio(cliente, tipo) {
-  if (PORTAL_OFICIAL[tipo]) return PORTAL_OFICIAL[tipo]
-  if (tipo === 'municipal') return PORTAL_OFICIAL_MUNICIPAL[cliente.codigo_municipio_ibge]
-  if (tipo === 'estadual') return PORTAL_OFICIAL_ESTADUAL[cliente.uf]
-  return null
-}
 
 function fmtData(d) {
   if (!d) return ''
@@ -69,7 +48,10 @@ export default function Certidoes() {
 
   async function salvar(e) {
     e.preventDefault()
-    if (!form.data_validade) return
+    if (!form.data_validade) {
+      alert('Preencha a data de Validade — é obrigatória para salvar.')
+      return
+    }
     setSalvando(true)
     try {
       let storage_path = null

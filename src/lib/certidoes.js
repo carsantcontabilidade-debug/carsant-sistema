@@ -90,6 +90,24 @@ export const STATUS_COR = {
   sem_registro: 'bg-gray-50 text-gray-400 border-gray-200',
 };
 
+// Checa se município/estado do cliente tem provedor automático de
+// verdade — mesma checagem usada no painel interno e no Portal, pra
+// não mostrar o botão de raio onde ele nunca vai funcionar.
+export function temAutomacao(cliente, tipo) {
+  if (tipo === 'municipal') return MUNICIPIOS_AUTOMATIZADOS.includes(cliente.codigo_municipio_ibge)
+  if (tipo === 'estadual') return ESTADOS_AUTOMATIZADOS.includes(cliente.uf)
+  return false
+}
+
+// Link de apoio (abrir portal oficial) pro cliente+tipo, quando não
+// existe automação.
+export function portalDeApoio(cliente, tipo) {
+  if (PORTAL_OFICIAL[tipo]) return PORTAL_OFICIAL[tipo]
+  if (tipo === 'municipal') return PORTAL_OFICIAL_MUNICIPAL[cliente.codigo_municipio_ibge]
+  if (tipo === 'estadual') return PORTAL_OFICIAL_ESTADUAL[cliente.uf]
+  return null
+}
+
 // Dado o array de certidões de um cliente (todas, histórico incluso),
 // retorna a mais recente de cada tipo (a que "vale" hoje).
 export function certidoesAtuais(certidoes) {

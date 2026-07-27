@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { usePortalAuth } from '../../contexts/PortalAuthContext'
 import { supabase } from '../../lib/supabase'
 import { sanitizarNomeArquivo } from '../../lib/storage'
-import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais } from '../../lib/certidoes'
-import { Loader2, Download, ShieldCheck, Upload } from 'lucide-react'
+import { TIPOS_CERTIDAO, statusCertidao, STATUS_LABEL, STATUS_COR, certidoesAtuais, temAutomacao, portalDeApoio } from '../../lib/certidoes'
+import { Loader2, Download, ShieldCheck, Upload, Zap, ExternalLink } from 'lucide-react'
 
 function fmtData(d) {
   if (!d) return ''
@@ -19,6 +19,7 @@ export default function PortalCertidoes() {
   const [form, setForm] = useState({ data_validade: '' })
   const [arquivo, setArquivo] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [emitindo, setEmitindo] = useState(null) // tipo em andamento
 
   useEffect(() => { if (cliente?.id) { fetchCertidoes(); marcarSecaoVisitada('certidoes') } }, [cliente?.id])
 
@@ -41,6 +42,39 @@ export default function PortalCertidoes() {
     setModal({ tipo })
     setForm({ data_validade: '' })
     setArquivo(null)
+  }
+
+  async function emitirAutomatico(tipo) {
+    setEmitindo(tipo)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/certidao-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ tipo }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao emitir.')
+      if (!data.sucesso) {
+        alert(`Não foi possível emitir automaticamente: ${data.motivo}`)
+        return
+      }
+      if (!data.negativa) {
+        alert('Certidão emitida, mas atenção: não parece ser uma certidão negativa — confira o arquivo salvo.')
+      }
+      fetchCertidoes()
+    } catch (err) {
+      alert(`Erro ao emitir automaticamente: ${err.message}`)
+    } finally {
+      setEmitindo(null)
+    }
+  }
+
+  async function abrirPortalOficial(tipo) {
+    if (cliente?.cnpj) {
+      try { await navigator.clipboard.writeText(cliente.cnpj.replace(/\D/g, '')) } catch { /* clipboard pode não estar disponível */ }
+    }
+    window.open(portalDeApoio(cliente, tipo), '_blank')
   }
 
   async function enviar(e) {
@@ -91,8 +125,10 @@ export default function PortalCertidoes() {
           {TIPOS_CERTIDAO.map((t) => {
             const atual = atuais[t.id]
             const status = statusCertidao(atual?.data_validade)
+            const automatizavel = cliente ? temAutomacao(cliente, t.id) : false
+            const link = cliente ? portalDeApoio(cliente, t.id) : null
             return (
-              <div key={t.id} className="p-4 flex items-center justify-between gap-3">
+              <div key={t.id} className="p-4 flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3 min-w-0">
                   <ShieldCheck className="w-4 h-4 text-gray-400 flex-shrink-0" />
                   <div className="min-w-0">
@@ -104,6 +140,21 @@ export default function PortalCertidoes() {
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${STATUS_COR[status]}`}>{STATUS_LABEL[status]}</span>
                   {atual?.storage_path && (
                     <button onClick={() => baixar(atual)} className="btn-secondary btn-sm gap-1.5"><Download className="w-3.5 h-3.5" /> Baixar</button>
+                  )}
+                  {automatizavel && (
+                    <button
+                      onClick={() => emitirAutomatico(t.id)}
+                      disabled={emitindo === t.id}
+                      className="btn-secondary btn-sm gap-1.5 text-yellow-700 disabled:opacity-40"
+                      title="Emitir automaticamente"
+                    >
+                      {emitindo === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Emitir agora
+                    </button>
+                  )}
+                  {!automatizavel && link && (
+                    <button onClick={() => abrirPortalOficial(t.id)} className="btn-secondary btn-sm gap-1.5" title="Abrir portal oficial (CNPJ copiado)">
+                      <ExternalLink className="w-3.5 h-3.5" /> Portal oficial
+                    </button>
                   )}
                   <button onClick={() => abrirCadastro(t.id)} className="btn-secondary btn-sm gap-1.5"><Upload className="w-3.5 h-3.5" /> Enviar</button>
                 </div>
