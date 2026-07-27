@@ -15,6 +15,19 @@ const STATUS_INFO = {
   erro:      { label: "Erro",       cor: "bg-red-100 text-red-600" },
 };
 
+// Cobranças com status "paga" via atualizarStatus() (confirmação real
+// do Inter) sempre recebem forma_pagamento="inter" — qualquer outro
+// valor aqui só pode ter vindo de uma baixa manual (darBaixaManual()).
+const FORMA_PAGAMENTO_LABEL = {
+  inter: "Boleto/Pix (Inter)",
+  dinheiro: "Dinheiro",
+  pix_direto: "Pix direto",
+  transferencia: "Transferência",
+  outro: "Outro",
+};
+
+const STATUS_PENDENTES_DE_BAIXA = ["pendente", "gerada", "vencida", "erro"];
+
 function formatarValor(v) {
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -80,6 +93,7 @@ export default function Cobrancas() {
     emitir_nota: false,
   });
   const [clienteForm, setClienteForm] = useState(null);
+  const [baixaForm, setBaixaForm] = useState({ dataPagamento: "", formaPagamento: "dinheiro" });
 
   // Lote
   const [loteSelecionados, setLoteSelecionados] = useState([]);
@@ -422,13 +436,15 @@ export default function Cobrancas() {
         : resultado.situacao === "CANCELADO" ? "cancelada"
         : resultado.situacao === "VENCIDO" ? "vencida"
         : "gerada";
-      const { error: errAtualizar } = await supabase.from("cobrancas").update({
+      const payloadAtualizacao = {
         status: novoStatus,
         paga_em: resultado.situacao === "PAGO" ? new Date().toISOString() : null,
         codigo_barras: resultado.codigoBarras || cobranca.codigo_barras,
         linha_digitavel: resultado.linhaDigitavel || cobranca.linha_digitavel,
         pix_copia_cola: resultado.pixCopiaECola || cobranca.pix_copia_cola,
-      }).eq("id", cobranca.id);
+      };
+      if (resultado.situacao === "PAGO") payloadAtualizacao.forma_pagamento = "inter";
+      const { error: errAtualizar } = await supabase.from("cobrancas").update(payloadAtualizacao).eq("id", cobranca.id);
       if (errAtualizar) throw new Error(errAtualizar.message);
       carregarCobrancas();
       setSucesso("Status atualizado!");
@@ -459,6 +475,55 @@ export default function Cobrancas() {
       setSucesso("Cobrança cancelada.");
     } catch (e) {
       setErro(`Erro ao cancelar: ${e.message}`);
+    }
+    setProcessando(false);
+  }
+
+  function abrirBaixaManual(cob) {
+    setCobrancaAtual(cob);
+    setBaixaForm({ dataPagamento: new Date().toISOString().slice(0, 10), formaPagamento: "dinheiro" });
+    setModalTipo("baixa");
+    setErro("");
+    setSucesso("");
+    setModalAberto(true);
+  }
+
+  // Dá baixa numa cobrança recebida por fora do fluxo Inter (dinheiro,
+  // Pix direto, transferência) — em vez do fluxo antigo de cancelar e
+  // gerar outra, que fazia o valor sumir do total de "Recebido". Se
+  // havia um boleto/Pix real gerado, cancela ele no banco também, pra
+  // não continuar aparecendo como vencido no DDA do cliente; se esse
+  // cancelamento falhar, a baixa local segue em frente do mesmo jeito
+  // (o dinheiro já foi recebido) e só avisa pra cancelar manualmente.
+  async function darBaixaManual(cobranca, { dataPagamento, formaPagamento }) {
+    setProcessando(true);
+    setErro("");
+    setSucesso("");
+    let avisoBanco = "";
+    try {
+      if (cobranca.codigo_solicitacao) {
+        try {
+          await chamarEdgeFunction("cancelar_cobranca", {
+            codigoSolicitacao: cobranca.codigo_solicitacao,
+            motivo: "ACERTOS",
+          });
+        } catch (e) {
+          avisoBanco = `Baixa registrada, mas não consegui cancelar automaticamente no banco (${e.message}). Cancele manualmente pelo app do Inter para o boleto não continuar aparecendo como vencido no DDA do cliente.`;
+        }
+      }
+      const { error: errAtualizar } = await supabase.from("cobrancas").update({
+        status: "paga",
+        paga_em: new Date(`${dataPagamento}T12:00:00`).toISOString(),
+        forma_pagamento: formaPagamento,
+      }).eq("id", cobranca.id);
+      if (errAtualizar) throw new Error(errAtualizar.message);
+
+      setModalAberto(false);
+      carregarCobrancas();
+      if (avisoBanco) setErro(avisoBanco);
+      else setSucesso("Baixa registrada com sucesso.");
+    } catch (e) {
+      setErro(`Erro ao registrar baixa: ${e.message}`);
     }
     setProcessando(false);
   }
@@ -762,6 +827,11 @@ export default function Cobrancas() {
                           <span>Venc: {formatarData(cob.vencimento)}</span>
                           {cob.codigo_solicitacao && <span>Inter: {cob.codigo_solicitacao.substring(0, 8)}...</span>}
                           {cob.profiles?.nome && <span>por {cob.profiles.nome}</span>}
+                          {cob.status === "paga" && cob.paga_em && (
+                            <span className="text-green-600">
+                              Pago em {formatarData(cob.paga_em.slice(0, 10))} · {FORMA_PAGAMENTO_LABEL[cob.forma_pagamento] || FORMA_PAGAMENTO_LABEL.inter}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -798,6 +868,12 @@ export default function Cobrancas() {
                   <div><label className="text-xs text-gray-500 uppercase">Valor</label><p className="font-bold text-lg text-gray-800 mt-1">{formatarValor(cobrancaAtual.valor)}</p></div>
                   <div><label className="text-xs text-gray-500 uppercase">Vencimento</label><p className="font-medium mt-1">{formatarData(cobrancaAtual.vencimento)}</p></div>
                   <div className="col-span-2"><label className="text-xs text-gray-500 uppercase">Descrição</label><p className="font-medium mt-1">{cobrancaAtual.descricao}</p></div>
+                  {cobrancaAtual.status === "paga" && cobrancaAtual.paga_em && (
+                    <>
+                      <div><label className="text-xs text-gray-500 uppercase">Pago em</label><p className="font-medium mt-1 text-green-700">{formatarData(cobrancaAtual.paga_em.slice(0, 10))}</p></div>
+                      <div><label className="text-xs text-gray-500 uppercase">Forma de pagamento</label><p className="font-medium mt-1">{FORMA_PAGAMENTO_LABEL[cobrancaAtual.forma_pagamento] || FORMA_PAGAMENTO_LABEL.inter}</p></div>
+                    </>
+                  )}
                 </div>
 
                 {/* Dados bancários */}
@@ -841,12 +917,17 @@ export default function Cobrancas() {
                       ✉️ Enviar E-mail
                     </button>
                   )}
-                  {cobrancaAtual.codigo_solicitacao && cobrancaAtual.status === "gerada" && (
+                  {cobrancaAtual.codigo_solicitacao && ["gerada", "vencida"].includes(cobrancaAtual.status) && (
                     <button onClick={() => atualizarStatus(cobrancaAtual)} disabled={processando} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 disabled:opacity-50">
                       🔄 Atualizar status
                     </button>
                   )}
-                  {cobrancaAtual.codigo_solicitacao && cobrancaAtual.status === "gerada" && (
+                  {STATUS_PENDENTES_DE_BAIXA.includes(cobrancaAtual.status) && (
+                    <button onClick={() => abrirBaixaManual(cobrancaAtual)} disabled={processando} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                      💵 Dar baixa manual
+                    </button>
+                  )}
+                  {cobrancaAtual.codigo_solicitacao && ["gerada", "vencida"].includes(cobrancaAtual.status) && (
                     <button onClick={() => cancelarCobranca(cobrancaAtual)} disabled={processando} className="border border-red-200 text-red-600 px-4 py-2 rounded-xl text-sm hover:bg-red-50 disabled:opacity-50">
                       ❌ Cancelar
                     </button>
@@ -855,6 +936,59 @@ export default function Cobrancas() {
                 </div>
                 {erro && <p className="text-red-500 text-xs mt-3">{erro}</p>}
                 {sucesso && <p className="text-green-600 text-xs mt-3">{sucesso}</p>}
+              </div>
+            )}
+
+            {/* Modal Dar baixa manual */}
+            {modalTipo === "baixa" && cobrancaAtual && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">💵 Dar baixa manual</h2>
+                  <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  {cobrancaAtual.clientes?.nome} — {formatarValor(cobrancaAtual.valor)}
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase">Data do pagamento</label>
+                    <input
+                      type="date"
+                      value={baixaForm.dataPagamento}
+                      onChange={e => setBaixaForm(f => ({ ...f, dataPagamento: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase">Forma de pagamento</label>
+                    <select
+                      value={baixaForm.formaPagamento}
+                      onChange={e => setBaixaForm(f => ({ ...f, formaPagamento: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                    >
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="pix_direto">Pix direto (fora do boleto)</option>
+                      <option value="transferencia">Transferência</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                  {cobrancaAtual.codigo_solicitacao && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                      Esta cobrança tem um boleto/Pix gerado no Inter — ao confirmar, ele será cancelado automaticamente no banco para não continuar aparecendo como vencido no DDA do cliente.
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 mt-6 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => darBaixaManual(cobrancaAtual, baixaForm)}
+                    disabled={processando || !baixaForm.dataPagamento}
+                    className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {processando ? "Processando..." : "Confirmar baixa"}
+                  </button>
+                  <button onClick={() => setModalAberto(false)} className="text-gray-400 px-4 py-2 rounded-xl text-sm hover:bg-gray-50">Cancelar</button>
+                </div>
+                {erro && <p className="text-red-500 text-xs mt-3">{erro}</p>}
               </div>
             )}
 
