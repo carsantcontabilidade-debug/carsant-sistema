@@ -135,12 +135,14 @@ function extrairDigitos(str) {
   return str.replace(/\D/g, '')
 }
 
-// Procura sequências de dígitos com pontos/espaços que, ao remover os
-// separadores, resultam em 47 (boleto bancário) ou 48 dígitos
-// (arrecadação/convênio) — os dois formatos de linha digitável
-// padronizados pela FEBRABAN pra qualquer boleto emitido no Brasil.
+// Procura sequências de dígitos com pontos/espaços/hífens (alguns
+// emissores usam hífen antes do dígito verificador de cada bloco, ex:
+// "84600000001-4") que, ao remover os separadores, resultam em 47
+// (boleto bancário) ou 48 dígitos (arrecadação/convênio) — os dois
+// formatos de linha digitável padronizados pela FEBRABAN pra qualquer
+// boleto emitido no Brasil.
 function encontrarLinhaDigitavel(texto) {
-  const candidatos = texto.match(/\d[\d.\s]{35,70}\d/g) || []
+  const candidatos = texto.match(/\d[\d.\s-]{35,70}\d/g) || []
   for (const c of candidatos) {
     const digitos = extrairDigitos(c)
     if (digitos.length === 47 || digitos.length === 48) return digitos
@@ -173,9 +175,12 @@ function decodificarBoleto(digitos) {
     // verificadores de bloco intercalados na linha digitável de 48.
     const barcode = digitos.slice(0, 11) + digitos.slice(12, 23) + digitos.slice(24, 35) + digitos.slice(36, 47)
     const identificadorValor = barcode[2]
-    // "1" = valor efetivo em reais no próprio código (caso mais comum);
-    // outros identificadores (referência/isento) não têm valor codificado.
-    const valor = identificadorValor === '1' ? Number(barcode.slice(4, 15)) / 100 : null
+    // Tabela FEBRABAN da posição 3 (índice 2) do código de barras de
+    // arrecadação: 6 = valor efetivo em reais (o caso comum, confirmado
+    // com uma fatura real da Claro); 7 = quantidade de moeda; 8 = valor
+    // efetivo em moeda variável; 9 = uso exclusivo do banco (referência,
+    // sem valor monetário direto no código).
+    const valor = identificadorValor === '6' ? Number(barcode.slice(4, 15)) / 100 : null
     return { tipo: 'arrecadacao', valor, vencimento: null, linhaDigitavel: digitos }
   }
   return null
@@ -193,17 +198,16 @@ function buscarVencimentoNoTexto(texto) {
   return generico ? normalizarDataBr(generico[1]) : null
 }
 
-// Prioridade 1: rótulo explícito "Cedente"/"Beneficiário" (quem EMITE a
-// cobrança — o fornecedor de verdade) — bem mais confiável que adivinhar
-// pela primeira linha, que às vezes pega o "Sacado"/"Pagador" (quem está
-// sendo cobrado) por estar posicionado antes no texto extraído.
-// Prioridade 2 (fallback): primeira linha com letras suficientes que não
-// seja um rótulo genérico do boleto. Nunca é garantido, por isso sempre
-// revisar antes de salvar.
+// Só preenche o fornecedor quando existe um rótulo explícito "Cedente"/
+// "Beneficiário" (quem emite a cobrança) — testado e descartado um
+// "modo de adivinhar pela primeira linha" que parecia razoável, mas
+// pegava o nome (e depois até o endereço) do PRÓPRIO CLIENTE em faturas
+// sem esse rótulo (ex: fatura da Claro, onde o nome do cliente aparece
+// logo no topo do documento). Um campo em branco pra revisar é melhor
+// que um palpite convincente e errado.
 function buscarFornecedor(texto) {
-  const cnpjMatch = texto.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/)
-
   const linhas = texto.split('\n').map((l) => l.trim()).filter(Boolean)
+
   const idxCedente = linhas.findIndex((l) => /^(Cedente|Benefici[aá]rio)\b/i.test(l))
   if (idxCedente !== -1) {
     // O nome normalmente vem depois do rótulo, na mesma linha (ex:
@@ -211,14 +215,20 @@ function buscarFornecedor(texto) {
     const mesmaLinha = linhas[idxCedente].replace(/^(Cedente|Benefici[aá]rio)\b[:\s]*/i, '').trim()
     const candidato = mesmaLinha.length > 3 ? mesmaLinha : linhas[idxCedente + 1]
     if (candidato) {
+      // O CNPJ do fornecedor, se aparecer, tende a estar perto do nome
+      // (mesma linha ou logo depois) — procurar só nessa vizinhança em
+      // vez do documento inteiro, senão corre o risco de pegar o CNPJ
+      // do próprio cliente (que aparece em outro lugar da fatura).
+      const vizinhanca = [linhas[idxCedente], linhas[idxCedente + 1], linhas[idxCedente + 2]].join(' ')
+      const cnpjPerto = vizinhanca.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/)
       const nomeLimpo = candidato.replace(/\s*(CNPJ|CPF)[:\s]*[\d.\-/]+.*$/i, '').trim()
-      return { cnpj: cnpjMatch?.[1] || '', fornecedor: nomeLimpo || candidato }
+      return { cnpj: cnpjPerto?.[1] || '', fornecedor: nomeLimpo || candidato }
     }
   }
 
-  const rotulosGenericos = /^(boleto|recibo|via|banco|pagador|sacado|benefici[aá]rio|cedente|vencimento|valor|documento|n[uú]mero|nosso n[uú]mero|ag[eê]ncia|c[oó]digo)/i
-  const nomeCandidato = linhas.find((l) => /[A-Za-zÀ-ÿ]{4,}/.test(l) && !rotulosGenericos.test(l))
-  return { cnpj: cnpjMatch?.[1] || '', fornecedor: nomeCandidato || '' }
+  // Sem rótulo explícito, não arrisca — nem nome nem CNPJ (o único CNPJ
+  // que aparece nesse tipo de fatura costuma ser o do próprio cliente).
+  return { cnpj: '', fornecedor: '' }
 }
 
 export async function analisarPdfBoleto(arrayBuffer, senha) {
