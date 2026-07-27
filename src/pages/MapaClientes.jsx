@@ -220,10 +220,9 @@ export default function MapaClientes() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800">🗺️ Mapa de Clientes</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-gray-500">
           {!ufSelecionada && 'Clique num estado para ver os municípios.'}
           {ufSelecionada && !municipioSelecionado && 'Clique num município para ver os clientes.'}
           {municipioSelecionado && `Clientes em ${nomeMunicipio}.`}

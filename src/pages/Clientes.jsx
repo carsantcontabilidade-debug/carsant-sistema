@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
-import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature, MapPin } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature, MapPin, Map, List } from 'lucide-react'
+import MapaClientes from './MapaClientes'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, regimes: ['MEI'] },
@@ -70,6 +71,7 @@ export default function Clientes() {
   const [divergencias, setDivergencias] = useState(null)
   const [corrigindoId, setCorrigindoId] = useState(null)
   const [colabs, setColabs] = useState([])
+  const [aba, setAba] = useState('lista') // 'lista' | 'mapa'
 
   useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
 
@@ -449,7 +451,7 @@ export default function Clientes() {
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
           <p className="text-sm text-gray-500 mt-1">{clientes.length} clientes cadastrados</p>
         </div>
-        {isGestor && (
+        {isGestor && aba === 'lista' && (
           <div className="flex items-center gap-2">
             <button onClick={verDistribuicao} className="btn-secondary gap-1.5">
               📊 {mostrarDistribuicao ? 'Ocultar' : 'Ver'} distribuição
@@ -480,6 +482,28 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      {/* Abas: lista (todo mundo já usa) vs mapa (interno — visível só
+          pra equipe, nunca aparece no Portal do Cliente, que é uma
+          árvore de rotas totalmente separada). */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        <button
+          onClick={() => setAba('lista')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${aba === 'lista' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <List className="w-4 h-4" /> Lista
+        </button>
+        <button
+          onClick={() => setAba('mapa')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${aba === 'mapa' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          <Map className="w-4 h-4" /> Mapa
+        </button>
+      </div>
+
+      {aba === 'mapa' && <MapaClientes />}
+
+      {aba === 'lista' && <>
 
       {divergencias && (
         <div className="card p-4 mb-5">
@@ -630,6 +654,8 @@ export default function Clientes() {
           </table>
         )}
       </div>
+
+      </>}
 
       {/* Modal */}
       {modalOpen && (
