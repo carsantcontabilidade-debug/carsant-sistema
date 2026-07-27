@@ -1,11 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useIdleLogout } from '../hooks/useIdleLogout'
 
 const PortalAuthContext = createContext({})
 
 const SECOES = ['honorarios', 'documentos', 'comunicacao', 'certidoes']
+const MINUTOS_INATIVIDADE = 60
 
 export function PortalAuthProvider({ children }) {
+  const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [cliente, setCliente] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -91,6 +95,13 @@ export function PortalAuthProvider({ children }) {
   async function signOut() {
     await supabase.auth.signOut()
   }
+
+  async function signOutPorInatividade() {
+    await signOut()
+    navigate('/portal/login')
+  }
+
+  useIdleLogout(!!user, MINUTOS_INATIVIDADE, signOutPorInatividade)
 
   return (
     <PortalAuthContext.Provider value={{ user, cliente, loading, signIn, signOut, contadores, marcarSecaoVisitada }}>

@@ -1,9 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useIdleLogout } from '../hooks/useIdleLogout'
 
 const AuthContext = createContext({})
 
+const MINUTOS_INATIVIDADE = 60
+
 export function AuthProvider({ children }) {
+  const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -40,6 +45,13 @@ export function AuthProvider({ children }) {
   async function signOut() {
     await supabase.auth.signOut()
   }
+
+  async function signOutPorInatividade() {
+    await signOut()
+    navigate('/login')
+  }
+
+  useIdleLogout(!!user, MINUTOS_INATIVIDADE, signOutPorInatividade)
 
   const isGestor = profile?.role === 'gestor'
 
