@@ -235,12 +235,35 @@ function buscarFornecedor(texto) {
   return { cnpj: '', fornecedor: '' }
 }
 
+// Guias governamentais nacionalmente padronizadas — o cabeçalho é
+// IDÊNTICO em qualquer emissão, de qualquer contribuinte, em qualquer
+// lugar do Brasil (é gerado pelo mesmo sistema federal/da Caixa) — bem
+// diferente de fatura de empresa privada, onde o layout varia por
+// emissor e por isso não arriscamos um palpite lá. Aqui dá pra confiar.
+const MESES_COMPETENCIA = /\b(Janeiro|Fevereiro|Mar[cç]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)\/(20\d{2})\b/i
+
+const GUIAS_GOVERNAMENTAIS = [
+  { regex: /Documento de Arrecada[cç][aã]o do Simples Nacional/i, label: 'DAS — Simples Nacional', fornecedor: 'Receita Federal' },
+  { regex: /Guia da Previd[eê]ncia Social\s*-?\s*GPS/i, label: 'GPS — INSS', fornecedor: 'INSS' },
+  { regex: /Guia de Recolhimento do FGTS|\bGRRF\b|\bGRF\b/i, label: 'Guia FGTS', fornecedor: 'Caixa Econômica Federal' },
+  { regex: /Documento de Arrecada[cç][aã]o de Receitas Federais|\bDARF\b/i, label: 'DARF', fornecedor: 'Receita Federal' },
+]
+
+function detectarGuiaGovernamental(texto) {
+  const guia = GUIAS_GOVERNAMENTAIS.find((g) => g.regex.test(texto))
+  if (!guia) return null
+  const competencia = texto.match(MESES_COMPETENCIA)
+  const descricao = competencia ? `${guia.label} — ${competencia[1]}/${competencia[2]}` : guia.label
+  return { fornecedor: guia.fornecedor, descricao, categoria: 'Impostos' }
+}
+
 export async function analisarPdfBoleto(arrayBuffer, senha) {
   const texto = await extrairTextoPdf(arrayBuffer, senha)
   const linha = encontrarLinhaDigitavel(texto)
   const decodificado = linha ? decodificarBoleto(linha) : null
   const vencimentoTexto = buscarVencimentoNoTexto(texto)
-  const { cnpj, fornecedor } = buscarFornecedor(texto)
+  const guiaGovernamental = detectarGuiaGovernamental(texto)
+  const { cnpj, fornecedor } = guiaGovernamental ? { cnpj: '', fornecedor: guiaGovernamental.fornecedor } : buscarFornecedor(texto)
 
   return {
     valor: decodificado?.valor ?? null,
@@ -249,6 +272,8 @@ export async function analisarPdfBoleto(arrayBuffer, senha) {
     cnpj: cnpj ? formatarCnpj(cnpj) : '',
     linhaDigitavel: decodificado?.linhaDigitavel || null,
     tipoBoleto: decodificado?.tipo || null,
+    descricaoSugerida: guiaGovernamental?.descricao || null,
+    categoriaSugerida: guiaGovernamental?.categoria || null,
     textoExtraido: texto,
   }
 }

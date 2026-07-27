@@ -140,8 +140,8 @@ export default function ContasPagar() {
         if (!dados) { setAvisoImportacao('Não foi possível abrir este PDF (senha incorreta muitas vezes) — preencha manualmente.'); return }
 
         setFormImportar({
-          descricao: dados.fornecedor ? `Boleto — ${dados.fornecedor}` : 'Boleto',
-          categoria: '',
+          descricao: dados.descricaoSugerida || (dados.fornecedor ? `Boleto — ${dados.fornecedor}` : 'Boleto'),
+          categoria: dados.categoriaSugerida || '',
           valor: dados.valor ?? '',
           dia_vencimento: diaDoVencimento(dados.vencimento),
           fornecedor: dados.cnpj ? `${dados.fornecedor} (${dados.cnpj})` : dados.fornecedor,
