@@ -1,7 +1,27 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Loader2, FileText, AlertTriangle, Search } from 'lucide-react'
+import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer } from 'lucide-react'
+import { baixarComprovantePdf, gerarComprovantePdfBase64, textoParaBase64Utf8 } from '../lib/nfsePdf'
+
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+]
+
+const STATUS_NOTA = {
+  emitida: { label: 'Emitida', cor: 'bg-green-100 text-green-700' },
+  erro: { label: 'Erro', cor: 'bg-red-100 text-red-700' },
+}
+
+function fmtValor(v) {
+  return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function fmtData(d) {
+  if (!d) return '—'
+  return new Date(`${d}T00:00:00`).toLocaleDateString('pt-BR')
+}
 
 const emptyForm = {
   rpsNumero: '', // vazio = numerado automaticamente pelo backend
@@ -45,6 +65,137 @@ export default function NfseEmitir() {
   const [consultando, setConsultando] = useState(false)
   const [resultadoConsulta, setResultadoConsulta] = useState(null)
   const [erroConsulta, setErroConsulta] = useState('')
+
+  const hoje = new Date()
+  const [mes, setMes] = useState(hoje.getMonth() + 1)
+  const [ano, setAno] = useState(hoje.getFullYear())
+  const [notas, setNotas] = useState([])
+  const [carregandoNotas, setCarregandoNotas] = useState(false)
+  const [enviandoId, setEnviandoId] = useState(null)
+  const [baixandoId, setBaixandoId] = useState(null)
+  const [exportandoLote, setExportandoLote] = useState(false)
+  const [gerandoRelatorioPdf, setGerandoRelatorioPdf] = useState(false)
+  const previewRef = useRef(null)
+
+  useEffect(() => { buscarNotas() }, [mes, ano])
+
+  async function buscarNotas() {
+    setCarregandoNotas(true)
+    try {
+      const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+      const fim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+      const { data, error } = await supabase
+        .from('notas_fiscais')
+        .select('*, clientes(nome, email, cnpj)')
+        .gte('competencia', inicio)
+        .lte('competencia', fim)
+        .order('competencia', { ascending: false })
+      if (error) throw error
+      setNotas(data || [])
+    } catch (err) {
+      alert(`Erro ao buscar notas fiscais: ${err.message}`)
+    } finally {
+      setCarregandoNotas(false)
+    }
+  }
+
+  function baixarXmlIndividual(nota) {
+    if (!nota.xml_resposta) { alert('Esta nota não tem XML salvo.'); return }
+    const blob = new Blob([nota.xml_resposta], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `NFSe-${nota.numero_nfse || nota.id}.xml`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function baixarPdfIndividual(nota) {
+    setBaixandoId(nota.id)
+    try {
+      await baixarComprovantePdf(nota, nota.clientes)
+    } catch (err) {
+      alert(`Erro ao gerar PDF: ${err.message}`)
+    } finally {
+      setBaixandoId(null)
+    }
+  }
+
+  async function enviarPorEmail(nota) {
+    if (!nota.clientes?.email) { alert('Este cliente não tem e-mail cadastrado.'); return }
+    setEnviandoId(nota.id)
+    try {
+      const pdfBase64 = await gerarComprovantePdfBase64(nota, nota.clientes)
+      const attachments = [{ filename: `NFSe-${nota.numero_nfse || nota.id}.pdf`, contentBase64: pdfBase64 }]
+      if (nota.xml_resposta) {
+        attachments.push({ filename: `NFSe-${nota.numero_nfse || nota.id}.xml`, contentBase64: textoParaBase64Utf8(nota.xml_resposta) })
+      }
+      const resp = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: nota.clientes.email,
+          subject: `Nota Fiscal ${nota.numero_nfse || ''} — CARSANT Contabilidade`,
+          text: `Olá, ${nota.clientes.nome}! Segue em anexo a nota fiscal referente à competência de ${fmtData(nota.competencia)}, no valor de ${fmtValor(nota.valor_servicos)}.`,
+          attachments,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || data.detail || 'Falha ao enviar e-mail')
+      alert(`E-mail enviado para ${nota.clientes.email} com PDF e XML anexados.`)
+    } catch (err) {
+      alert(`Erro ao enviar: ${err.message}`)
+    } finally {
+      setEnviandoId(null)
+    }
+  }
+
+  async function baixarXmlEmLote() {
+    const comXml = notas.filter((n) => n.xml_resposta)
+    if (comXml.length === 0) { alert('Nenhuma nota do período selecionado tem XML salvo.'); return }
+    setExportandoLote(true)
+    try {
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      comXml.forEach((n) => zip.file(`NFSe-${n.numero_nfse || n.id}.xml`, n.xml_resposta))
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `NFSe-XML-${MESES[mes - 1]}-${ano}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(`Erro ao gerar o lote: ${err.message}`)
+    } finally {
+      setExportandoLote(false)
+    }
+  }
+
+  async function exportarRelatorioPdf() {
+    setGerandoRelatorioPdf(true)
+    try {
+      if (!window.html2pdf) {
+        await import('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js')
+      }
+      const html2pdf = window.html2pdf
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `CARSANT-NotasFiscais-${MESES[mes - 1]}-${ano}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      }
+      await html2pdf().set(opt).from(previewRef.current).save()
+    } catch (e) {
+      window.print()
+    } finally {
+      setGerandoRelatorioPdf(false)
+    }
+  }
+
+  const anosDisponiveis = [anoAtual - 1, anoAtual, anoAtual + 1]
+  const totalNotas = notas.reduce((s, n) => s + Number(n.valor_servicos || 0), 0)
 
   if (profile?.role !== 'gestor') {
     return <div className="p-8 text-center text-gray-500">Acesso restrito ao gestor.</div>
@@ -146,10 +297,99 @@ export default function NfseEmitir() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Emitir NFS-e — WebISS</h1>
-        <p className="text-sm text-gray-500 mt-1">Integração direta com a Prefeitura de Feira de Santana (padrão ABRASF 2.02).</p>
+        <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
+        <p className="text-sm text-gray-500 mt-1">Notas emitidas, filtradas por competência, com exportação e envio ao cliente.</p>
+      </div>
+
+      <div className="card p-5 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="form-group">
+              <label className="form-label">Mês</label>
+              <select className="select" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
+                {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Ano</label>
+              <select className="select" value={ano} onChange={(e) => setAno(Number(e.target.value))}>
+                {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={exportarRelatorioPdf} disabled={gerandoRelatorioPdf || notas.length === 0} className="btn-secondary btn-sm gap-1.5">
+              {gerandoRelatorioPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Exportar relatório em PDF
+            </button>
+            <button onClick={baixarXmlEmLote} disabled={exportandoLote || notas.length === 0} className="btn-secondary btn-sm gap-1.5">
+              {exportandoLote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />} Baixar XML em lote
+            </button>
+          </div>
+        </div>
+
+        {carregandoNotas ? (
+          <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
+        ) : (
+          <div ref={previewRef} className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Cliente</th><th>Número</th><th>Competência</th><th>Valor</th><th>Status</th><th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notas.map((n) => (
+                  <tr key={n.id}>
+                    <td>
+                      <div className="font-medium text-gray-900">{n.clientes?.nome || '—'}</div>
+                      {n.clientes?.email && <div className="text-xs text-gray-500">{n.clientes.email}</div>}
+                    </td>
+                    <td>{n.numero_nfse || '—'}</td>
+                    <td>{fmtData(n.competencia)}</td>
+                    <td className="font-medium">{fmtValor(n.valor_servicos)}</td>
+                    <td>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_NOTA[n.status]?.cor || 'bg-gray-100 text-gray-600'}`}>
+                        {STATUS_NOTA[n.status]?.label || n.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => baixarXmlIndividual(n)} className="btn-ghost btn-sm p-1.5" title="Baixar XML">
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => baixarPdfIndividual(n)} disabled={baixandoId === n.id} className="btn-ghost btn-sm p-1.5" title="Baixar comprovante em PDF">
+                          {baixandoId === n.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                        </button>
+                        <button onClick={() => enviarPorEmail(n)} disabled={enviandoId === n.id || !n.clientes?.email} className="btn-ghost btn-sm p-1.5 text-brand-600" title="Enviar PDF + XML por e-mail">
+                          {enviandoId === n.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {notas.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-500">Nenhuma nota fiscal nesta competência</td></tr>
+                )}
+              </tbody>
+              {notas.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} className="text-right font-semibold text-gray-700">Total</td>
+                    <td className="font-bold text-gray-900">{fmtValor(totalNotas)}</td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 pt-6">
+        <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — WebISS (homologação)</h2>
+        <p className="text-sm text-gray-500 mb-4">Ferramenta de teste — integração direta com a Prefeitura de Feira de Santana (padrão ABRASF 2.02). A emissão real acontece pela tela de Clientes.</p>
       </div>
 
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">

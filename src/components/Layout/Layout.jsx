@@ -19,7 +19,7 @@ const navItems = [
       { to: '/honorarios',   icon: DollarSign, label: 'Honorários' },
       { to: '/cobrancas',    icon: Receipt,    label: 'Cobranças' },
       { to: '/contas-pagar', icon: CreditCard, label: 'Contas a Pagar' },
-      { to: '/nfse-emitir',  icon: FileSignature, label: 'Emitir NFS-e' },
+      { to: '/nfse-emitir',  icon: FileSignature, label: 'Notas Fiscais' },
     ],
   },
   { to: '/relatorio',    icon: FileText,         label: 'Relatorio',      somenteGestor: true  },
