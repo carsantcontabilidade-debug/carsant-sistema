@@ -81,7 +81,12 @@ export default function NfseEmitir() {
   const [gerandoRelatorioPdf, setGerandoRelatorioPdf] = useState(false)
   const [cancelandoId, setCancelandoId] = useState(null)
   const [notaSubstituir, setNotaSubstituir] = useState(null) // nota sendo substituída
-  const [formSubstituir, setFormSubstituir] = useState({ valorServicos: '', discriminacao: '' })
+  const [formSubstituir, setFormSubstituir] = useState({
+    valorServicos: '', discriminacao: '', competencia: '',
+    tomadorNome: '', tomadorCnpj: '', tomadorEmail: '', tomadorTelefone: '',
+    tomadorLogradouro: '', tomadorNumero: '', tomadorComplemento: '', tomadorBairro: '', tomadorCep: '', tomadorUf: '',
+    tomadorCodigoMunicipioIbge: '',
+  })
   const [substituindo, setSubstituindo] = useState(false)
   const previewRef = useRef(null)
 
@@ -94,7 +99,7 @@ export default function NfseEmitir() {
       const fim = new Date(ano, mes, 0).toISOString().slice(0, 10)
       let query = supabase
         .from('notas_fiscais')
-        .select('*, clientes(nome, email, cnpj)')
+        .select('*, clientes(nome, email, cnpj, telefone, logradouro, numero_endereco, complemento, bairro, cep, uf, codigo_municipio_ibge)')
         .gte(campoFiltroData, inicio)
         .lte(campoFiltroData, campoFiltroData === 'data_emissao' ? `${fim}T23:59:59` : fim)
         .order(campoFiltroData, { ascending: false })
@@ -196,14 +201,36 @@ export default function NfseEmitir() {
   }
 
   function abrirSubstituir(nota) {
+    const c = nota.clientes || {}
     setNotaSubstituir(nota)
-    setFormSubstituir({ valorServicos: nota.valor_servicos || '', discriminacao: nota.discriminacao || '' })
+    setFormSubstituir({
+      valorServicos: nota.valor_servicos || '',
+      discriminacao: nota.discriminacao || '',
+      competencia: nota.competencia ? String(nota.competencia).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      tomadorNome: c.nome || '',
+      tomadorCnpj: (c.cnpj || '').replace(/\D/g, ''),
+      tomadorEmail: c.email || '',
+      tomadorTelefone: (c.telefone || '').replace(/\D/g, ''),
+      tomadorLogradouro: c.logradouro || '',
+      tomadorNumero: c.numero_endereco || '',
+      tomadorComplemento: c.complemento || '',
+      tomadorBairro: c.bairro || '',
+      tomadorCep: (c.cep || '').replace(/\D/g, ''),
+      tomadorUf: c.uf || '',
+      tomadorCodigoMunicipioIbge: c.codigo_municipio_ibge || '',
+    })
   }
 
   async function confirmarSubstituir() {
     const nota = notaSubstituir
-    if (!formSubstituir.discriminacao || formSubstituir.discriminacao.trim().length < 10) {
+    const f = formSubstituir
+    if (!f.discriminacao || f.discriminacao.trim().length < 10) {
       alert('A discriminação precisa ter pelo menos 10 caracteres.')
+      return
+    }
+    const cnpjLimpo = f.tomadorCnpj.replace(/\D/g, '')
+    if (cnpjLimpo.length !== 14) {
+      alert(`O CNPJ do tomador precisa ter exatamente 14 dígitos (tem ${cnpjLimpo.length}).`)
       return
     }
     if (!window.confirm(`Substituir a NFS-e nº ${nota.numero_nfse}? A nota atual será cancelada e uma nova será emitida no lugar.\n\nEsta ação tem efeito fiscal real perante a Prefeitura e não pode ser desfeita.`)) return
@@ -221,8 +248,24 @@ export default function NfseEmitir() {
           acao: 'substituir',
           notaId: nota.id,
           dados: {
-            valorServicos: parseFloat(formSubstituir.valorServicos) || 0,
-            discriminacao: formSubstituir.discriminacao,
+            valorServicos: parseFloat(f.valorServicos) || 0,
+            discriminacao: f.discriminacao,
+            competencia: f.competencia,
+            tomador: {
+              razaoSocial: f.tomadorNome || undefined,
+              cnpj: cnpjLimpo,
+              email: f.tomadorEmail || undefined,
+              telefone: f.tomadorTelefone.replace(/\D/g, '') || undefined,
+              endereco: f.tomadorLogradouro ? {
+                logradouro: f.tomadorLogradouro,
+                numero: f.tomadorNumero,
+                complemento: f.tomadorComplemento || undefined,
+                bairro: f.tomadorBairro,
+                cep: f.tomadorCep.replace(/\D/g, ''),
+                uf: f.tomadorUf,
+                codigoMunicipioIbge: f.tomadorCodigoMunicipioIbge,
+              } : undefined,
+            },
           },
         }),
       })
@@ -529,15 +572,73 @@ export default function NfseEmitir() {
             <div className="modal-body space-y-4">
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">
                 <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                <span>A nota atual será <strong>cancelada</strong> e uma nova NFS-e será emitida com os dados abaixo, para o mesmo cliente.</span>
+                <span>A nota atual será <strong>cancelada</strong> e uma nova NFS-e será emitida com os dados abaixo.</span>
               </div>
-              <div className="form-group">
-                <label className="form-label">Valor dos Serviços (R$)</label>
-                <input type="number" step="0.01" className="input" value={formSubstituir.valorServicos} onChange={(e) => setFormSubstituir((f) => ({ ...f, valorServicos: e.target.value }))} />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="form-label">Competência</label>
+                  <input type="date" className="input" value={formSubstituir.competencia} onChange={(e) => setFormSubstituir((f) => ({ ...f, competencia: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Valor dos Serviços (R$)</label>
+                  <input type="number" step="0.01" className="input" value={formSubstituir.valorServicos} onChange={(e) => setFormSubstituir((f) => ({ ...f, valorServicos: e.target.value }))} />
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Discriminação do serviço</label>
                 <textarea className="textarea" rows={3} value={formSubstituir.discriminacao} onChange={(e) => setFormSubstituir((f) => ({ ...f, discriminacao: e.target.value }))} />
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Tomador</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="form-group">
+                    <label className="form-label">Nome / Razão social</label>
+                    <input className="input" value={formSubstituir.tomadorNome} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorNome: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">CNPJ</label>
+                    <input
+                      className="input"
+                      value={formSubstituir.tomadorCnpj}
+                      onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorCnpj: e.target.value.replace(/\D/g, '').slice(0, 14) }))}
+                      maxLength={14}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">E-mail</label>
+                    <input type="email" className="input" value={formSubstituir.tomadorEmail} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorEmail: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Telefone</label>
+                    <input className="input" value={formSubstituir.tomadorTelefone} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorTelefone: e.target.value }))} />
+                  </div>
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Logradouro</label>
+                    <input className="input" value={formSubstituir.tomadorLogradouro} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorLogradouro: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Número</label>
+                    <input className="input" value={formSubstituir.tomadorNumero} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorNumero: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Complemento</label>
+                    <input className="input" value={formSubstituir.tomadorComplemento} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorComplemento: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Bairro</label>
+                    <input className="input" value={formSubstituir.tomadorBairro} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorBairro: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">CEP</label>
+                    <input className="input" value={formSubstituir.tomadorCep} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorCep: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">UF</label>
+                    <input className="input" maxLength={2} value={formSubstituir.tomadorUf} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorUf: e.target.value.toUpperCase() }))} />
+                  </div>
+                </div>
               </div>
             </div>
             <div className="modal-footer">

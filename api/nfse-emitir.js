@@ -206,7 +206,10 @@ async function substituirNota(admin, req, res, userId) {
 
   let dados = { ...dadosRecebidos };
 
-  if (notaAntiga.cliente_id) {
+  // Diferente da emissão normal, aqui o tomador enviado pelo formulário
+  // (permite corrigir nome/CNPJ/endereço errados na nota original) tem
+  // prioridade — só busca do cadastro do cliente se nada foi enviado.
+  if (!dados.tomador?.cnpj && notaAntiga.cliente_id) {
     const resolvido = await resolverTomadorDoCliente(admin, notaAntiga.cliente_id);
     if (resolvido.error) return res.status(404).json({ error: resolvido.error });
     dados.tomador = resolvido.tomador;
