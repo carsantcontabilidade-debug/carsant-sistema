@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock } from 'lucide-react'
+import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -49,6 +49,18 @@ export default function Honorarios() {
   async function desmarcarPago(clienteId) {
     const existente = pagamentos.find(p => p.cliente_id === clienteId)
     if (existente) await supabase.from('pagamentos_honorarios').update({ pago: false, data_pagamento: null }).eq('id', existente.id)
+    fetchDados()
+  }
+
+  function registroExistente(clienteId) {
+    return pagamentos.find(p => p.cliente_id === clienteId)
+  }
+
+  async function excluirRegistro(clienteId) {
+    const existente = registroExistente(clienteId)
+    if (!existente) return
+    if (!window.confirm('Excluir o registro de pagamento deste mês para este cliente? O status volta a ser calculado normalmente (pendente/atraso), sem nenhuma data de pagamento salva.')) return
+    await supabase.from('pagamentos_honorarios').delete().eq('id', existente.id)
     fetchDados()
   }
 
@@ -161,14 +173,21 @@ export default function Honorarios() {
                     <td className="text-gray-600">Dia {c.dia_vencimento || 10}</td>
                     <td><span className={stBadge}>{stLabel}</span></td>
                     <td>
-                      {st !== 'pago'
-                        ? <button onClick={() => marcarPago(c.id)} className="btn-secondary btn-sm gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
-                            <CheckCircle className="w-3.5 h-3.5" /> Marcar pago
+                      <div className="flex items-center gap-1.5">
+                        {st !== 'pago'
+                          ? <button onClick={() => marcarPago(c.id)} className="btn-secondary btn-sm gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
+                              <CheckCircle className="w-3.5 h-3.5" /> Marcar pago
+                            </button>
+                          : <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
+                              <RefreshCw className="w-3.5 h-3.5" /> Desfazer
+                            </button>
+                        }
+                        {registroExistente(c.id) && (
+                          <button onClick={() => excluirRegistro(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50" title="Excluir registro deste mês">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        : <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
-                            <RefreshCw className="w-3.5 h-3.5" /> Desfazer
-                          </button>
-                      }
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
