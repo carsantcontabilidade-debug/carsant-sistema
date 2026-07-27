@@ -337,6 +337,35 @@ export async function enviarCancelarNfse(envelopeXml, ambiente = 'homologacao') 
   return enviarOperacaoWebiss('CancelarNfse', envelopeXml, ambiente);
 }
 
+// SubstituicaoNfse tem sua PRÓPRIA assinatura (tcInfSubstituicaoNfse, com
+// Id próprio), além das assinaturas já existentes em Pedido e Rps — três
+// camadas, não duas. Confirmado após o WebISS recusar a primeira tentativa
+// com "[E225] O documento de substituição não está assinado digitalmente"
+// (pesquisa nos manuais oficiais ABRASF confirmou o campo Signature extra
+// no tipo tcInfSubstituicaoNfse).
+function assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTag, { certPem, keyPem }) {
+  const sig = new SignedXml({
+    privateKey: keyPem,
+    publicCert: certPem,
+    canonicalizationAlgorithm: 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
+    signatureAlgorithm: 'http://www.w3.org/2000/09/xmldsig#rsa-sha1',
+  });
+  sig.addReference({
+    xpath: `//*[@Id='${idTag}']`,
+    uri: `#${idTag}`,
+    digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
+    transforms: [
+      'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+      'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
+    ],
+  });
+  const substituicaoXml = `<SubstituicaoNfse Id="${idTag}">${pedidoAssinado}${rpsAssinado}</SubstituicaoNfse>`;
+  sig.computeSignature(substituicaoXml, {
+    location: { reference: `//*[@Id='${idTag}']`, action: 'after' },
+  });
+  return sig.getSignedXml();
+}
+
 // notaAntiga = { ambiente, numero } (a NFS-e sendo substituída).
 // dadosNovaDps = mesmo shape de montarInfDeclaracaoDps (a NFS-e nova).
 export function montarSubstituirNfseEnvio(notaAntiga, dadosNovaDps, credenciais = WEBISS_CREDENCIAIS, codigoCancelamento) {
@@ -348,9 +377,10 @@ export function montarSubstituirNfseEnvio(notaAntiga, dadosNovaDps, credenciais 
   const infDpsXml = montarInfDeclaracaoDps(dadosNovaDps);
   const rpsAssinado = assinarInfDeclaracao(infDpsXml, idTagDps, credenciais);
 
-  return `<SubstituirNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">` +
-    `<SubstituicaoNfse>${pedidoAssinado}${rpsAssinado}</SubstituicaoNfse>` +
-  `</SubstituirNfseEnvio>`;
+  const idTagSubstituicao = `substituicaonfse_${CARSANT.cnpj}_${notaAntiga.numero}`;
+  const substituicaoAssinada = assinarSubstituicaoNfse(pedidoAssinado, rpsAssinado, idTagSubstituicao, credenciais);
+
+  return `<SubstituirNfseEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">${substituicaoAssinada}</SubstituirNfseEnvio>`;
 }
 
 export async function enviarSubstituirNfse(envelopeXml, ambiente = 'homologacao') {
