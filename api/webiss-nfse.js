@@ -277,11 +277,16 @@ const CODIGO_CANCELAMENTO_PADRAO = '1';
 
 // nota = { ambiente, numero } — o suficiente pra identificar a NFS-e já
 // emitida que será cancelada/substituída.
+//
+// PRIMEIRA TENTATIVA rejeitada pelo WebISS (E160, XmlSchemaValidationException
+// em IdentificacaoNfse) usando <Cnpj> direto — corrigido pra <CpfCnpj><Cnpj>,
+// o mesmo padrão já confirmado funcionando em prestadorIdentificacaoXml()
+// (usado nas consultas, testadas com sucesso).
 function montarIdentificacaoNfseXml(nota) {
   const codigoMunicipio = codigoMunicipioPrestador(nota.ambiente);
   return `<IdentificacaoNfse>` +
     `<Numero>${nota.numero}</Numero>` +
-    `<Cnpj>${CARSANT.cnpj}</Cnpj>` +
+    `<CpfCnpj><Cnpj>${CARSANT.cnpj}</Cnpj></CpfCnpj>` +
     `<InscricaoMunicipal>${CARSANT.inscricaoMunicipal}</InscricaoMunicipal>` +
     `<CodigoMunicipio>${codigoMunicipio}</CodigoMunicipio>` +
   `</IdentificacaoNfse>`;
