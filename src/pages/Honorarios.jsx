@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Trash2 } from 'lucide-react'
+import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Trash2, Ban } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -15,6 +15,7 @@ export default function Honorarios() {
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [ocultarIsentos, setOcultarIsentos] = useState(false)
 
   useEffect(() => { fetchDados() }, [mesAtivo, anoAtivo])
 
@@ -30,8 +31,9 @@ export default function Honorarios() {
   }
 
   function statusCliente(c) {
-    const pago = pagamentos.find(p => p.cliente_id === c.id)?.pago
-    if (pago) return 'pago'
+    const registro = pagamentos.find(p => p.cliente_id === c.id)
+    if (registro?.isento) return 'isento'
+    if (registro?.pago) return 'pago'
     const venc = new Date(anoAtivo, mesAtivo, c.dia_vencimento || 10)
     return hoje > venc ? 'atraso' : 'pendente'
   }
@@ -52,6 +54,18 @@ export default function Honorarios() {
     fetchDados()
   }
 
+  // Isentar = "esse mês não se aplica" pra esse cliente (férias, pausa,
+  // erro de cobrança) — diferente de pago, não conta em nenhum total.
+  async function marcarIsento(clienteId) {
+    const existente = pagamentos.find(p => p.cliente_id === clienteId)
+    if (existente) {
+      await supabase.from('pagamentos_honorarios').update({ isento: true, pago: false, data_pagamento: null }).eq('id', existente.id)
+    } else {
+      await supabase.from('pagamentos_honorarios').insert({ cliente_id: clienteId, mes: mesAtivo, ano: anoAtivo, isento: true })
+    }
+    fetchDados()
+  }
+
   function registroExistente(clienteId) {
     return pagamentos.find(p => p.cliente_id === clienteId)
   }
@@ -59,7 +73,7 @@ export default function Honorarios() {
   async function excluirRegistro(clienteId) {
     const existente = registroExistente(clienteId)
     if (!existente) return
-    if (!window.confirm('Excluir o registro de pagamento deste mês para este cliente? O status volta a ser calculado normalmente (pendente/atraso), sem nenhuma data de pagamento salva.')) return
+    if (!window.confirm('Excluir o registro deste mês para este cliente (pago ou isenção)? O status volta a ser calculado normalmente (pendente/atraso).')) return
     await supabase.from('pagamentos_honorarios').delete().eq('id', existente.id)
     fetchDados()
   }
@@ -72,13 +86,16 @@ export default function Honorarios() {
 
   const filtrados = clientes.filter(c => {
     const st = statusCliente(c)
+    if (ocultarIsentos && st === 'isento') return false
     return c.nome.toLowerCase().includes(busca.toLowerCase()) && (!filtroStatus || st === filtroStatus)
   })
 
-  const totalMes = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const recebido = clientes.filter(c => statusCliente(c) === 'pago').reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const emAtraso = clientes.filter(c => statusCliente(c) === 'atraso').reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const pendente = clientes.filter(c => statusCliente(c) === 'pendente').reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  // Isentos não entram em nenhum total do mês (não são cobrança esperada).
+  const clientesCobraveis = clientes.filter(c => statusCliente(c) !== 'isento')
+  const totalMes = clientesCobraveis.reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const recebido = clientesCobraveis.filter(c => statusCliente(c) === 'pago').reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const emAtraso = clientesCobraveis.filter(c => statusCliente(c) === 'atraso').reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const pendente = clientesCobraveis.filter(c => statusCliente(c) === 'pendente').reduce((s, c) => s + (c.valor_honorario || 0), 0)
   const fmt = v => 'R$ ' + Number(v).toLocaleString('pt-BR')
 
   return (
@@ -101,7 +118,7 @@ export default function Honorarios() {
         <div className="stat-card">
           <div className="stat-label">Total do mês</div>
           <div className="stat-value text-gray-900">{fmt(totalMes)}</div>
-          <div className="stat-sub">{clientes.length} clientes</div>
+          <div className="stat-sub">{clientesCobraveis.length} clientes</div>
         </div>
         <div className="stat-card">
           <div className="stat-label flex items-center gap-1"><CheckCircle className="w-3 h-3 text-green-500" /> Recebido</div>
@@ -144,7 +161,12 @@ export default function Honorarios() {
           <option value="pago">Pagos</option>
           <option value="pendente">Pendentes</option>
           <option value="atraso">Em atraso</option>
+          <option value="isento">Isentos</option>
         </select>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 px-1">
+          <input type="checkbox" className="accent-brand-600" checked={ocultarIsentos} onChange={e => setOcultarIsentos(e.target.checked)} />
+          Ocultar isentos
+        </label>
       </div>
 
       {/* Tabela */}
@@ -160,8 +182,8 @@ export default function Honorarios() {
             <tbody>
               {filtrados.map(c => {
                 const st = statusCliente(c)
-                const stBadge = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red' }[st]
-                const stLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso' }[st]
+                const stBadge = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red', isento: 'badge-gray' }[st]
+                const stLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', isento: 'Isento' }[st]
                 return (
                   <tr key={c.id}>
                     <td>
@@ -174,14 +196,21 @@ export default function Honorarios() {
                     <td><span className={stBadge}>{stLabel}</span></td>
                     <td>
                       <div className="flex items-center gap-1.5">
-                        {st !== 'pago'
-                          ? <button onClick={() => marcarPago(c.id)} className="btn-secondary btn-sm gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
+                        {st === 'pago' && (
+                          <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
+                            <RefreshCw className="w-3.5 h-3.5" /> Desfazer
+                          </button>
+                        )}
+                        {(st === 'pendente' || st === 'atraso') && (
+                          <>
+                            <button onClick={() => marcarPago(c.id)} className="btn-secondary btn-sm gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
                               <CheckCircle className="w-3.5 h-3.5" /> Marcar pago
                             </button>
-                          : <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
-                              <RefreshCw className="w-3.5 h-3.5" /> Desfazer
+                            <button onClick={() => marcarIsento(c.id)} className="btn-ghost btn-sm gap-1.5 text-gray-500" title="Isentar este mês (não conta como pendente/atraso)">
+                              <Ban className="w-3.5 h-3.5" /> Isentar
                             </button>
-                        }
+                          </>
+                        )}
                         {registroExistente(c.id) && (
                           <button onClick={() => excluirRegistro(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50" title="Excluir registro deste mês">
                             <Trash2 className="w-3.5 h-3.5" />
