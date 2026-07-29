@@ -24,8 +24,14 @@ export function AuthProvider({ children }) {
     // Escuta mudanças de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else { setProfile(null); setLoading(false) }
+      if (session?.user) {
+        // loading precisa voltar pra true aqui: sem isso, há uma janela entre
+        // "user" já preenchido e "profile" ainda não buscado em que o
+        // PrivateRoute lê profile=null (valor antigo) e manda pro Portal do
+        // Cliente por engano, mesmo sendo um login de gestor/colaborador.
+        setLoading(true)
+        fetchProfile(session.user.id)
+      } else { setProfile(null); setLoading(false) }
     })
 
     return () => subscription.unsubscribe()

@@ -48,17 +48,28 @@ function montarHtmlComprovante(nota, cliente) {
   `
 }
 
+// html2canvas (usado internamente pelo html2pdf) gera captura em branco
+// quando o elemento capturado tem position:fixed/absolute diretamente nele
+// — confirmado testando várias variações. Por isso o container em si fica
+// em fluxo normal (sem position própria) e quem "esconde" da tela é um
+// wrapper externo com overflow:hidden + tamanho zero, que não afeta a
+// captura.
 async function comContainerTemporario(html, callback) {
+  const wrapper = document.createElement('div')
+  wrapper.style.position = 'absolute'
+  wrapper.style.left = '0'
+  wrapper.style.top = '0'
+  wrapper.style.width = '0'
+  wrapper.style.height = '0'
+  wrapper.style.overflow = 'hidden'
   const container = document.createElement('div')
   container.innerHTML = html
-  container.style.position = 'fixed'
-  container.style.left = '-99999px'
-  container.style.top = '0'
-  document.body.appendChild(container)
+  wrapper.appendChild(container)
+  document.body.appendChild(wrapper)
   try {
     return await callback(container)
   } finally {
-    document.body.removeChild(container)
+    document.body.removeChild(wrapper)
   }
 }
 

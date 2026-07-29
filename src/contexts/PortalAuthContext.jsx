@@ -24,8 +24,10 @@ export function PortalAuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchCliente(session.user.id)
-      else { setCliente(null); setLoading(false) }
+      if (session?.user) {
+        setLoading(true)
+        fetchCliente(session.user.id)
+      } else { setCliente(null); setLoading(false) }
     })
 
     return () => subscription.unsubscribe()
