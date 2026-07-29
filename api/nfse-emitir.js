@@ -4,6 +4,7 @@ import {
   montarCancelarNfseEnvio, enviarCancelarNfse,
   montarSubstituirNfseEnvio, enviarSubstituirNfse,
 } from './webiss-nfse.js';
+import { baixarDanfseOficialPdf } from './_webiss-portal.js';
 
 // Emite/cancela/substitui uma NFS-e via WebISS. Só um gestor autenticado
 // pode chamar. Dispatcha por req.body.acao ('emitir' por padrão, 'cancelar'
@@ -46,7 +47,27 @@ export default async function handler(req, res) {
   const { acao } = req.body || {};
   if (acao === 'cancelar') return cancelarNota(admin, req, res);
   if (acao === 'substituir') return substituirNota(admin, req, res, userData.user.id);
+  if (acao === 'baixarDanfseOficial') return baixarDanfseOficial(admin, req, res);
   return emitirNota(admin, req, res, userData.user.id);
+}
+
+async function baixarDanfseOficial(admin, req, res) {
+  const { notaId } = req.body || {};
+  if (!notaId) return res.status(400).json({ error: 'Campo "notaId" é obrigatório.' });
+
+  const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('numero_nfse, ambiente').eq('id', notaId).single();
+  if (notaError || !nota) return res.status(404).json({ error: 'Nota fiscal não encontrada.' });
+  if (!nota.numero_nfse) return res.status(400).json({ error: 'Esta nota não tem número da NFS-e registrado.' });
+  if (nota.ambiente !== 'producao') {
+    return res.status(400).json({ error: 'O DANFSE oficial só está disponível para notas de produção.' });
+  }
+
+  try {
+    const { pdfBase64, nomeArquivo } = await baixarDanfseOficialPdf(nota.numero_nfse);
+    return res.status(200).json({ success: true, pdfBase64, nomeArquivo });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
 }
 
 async function resolverTomadorDoCliente(admin, clienteId) {

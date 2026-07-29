@@ -131,9 +131,46 @@ export default function NfseEmitir() {
     URL.revokeObjectURL(url)
   }
 
+  // Tenta o DANFSE oficial da Prefeitura (baixado da área logada do
+  // prestador no WebISS) antes de cair pro comprovante próprio do sistema —
+  // só existe pra notas de produção. Ver api/_webiss-portal.js.
+  async function baixarDanfseOficialBase64(notaId) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const resp = await fetch('/api/nfse-emitir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ acao: 'baixarDanfseOficial', notaId }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.error || 'Falha ao baixar DANFSE oficial')
+    return data.pdfBase64
+  }
+
+  function baixarBase64ComoArquivo(base64, nomeArquivo) {
+    const binario = atob(base64)
+    const bytes = new Uint8Array(binario.length)
+    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i)
+    const blob = new Blob([bytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = nomeArquivo
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function baixarPdfIndividual(nota) {
     setBaixandoId(nota.id)
     try {
+      if (nota.ambiente === 'producao' && nota.numero_nfse) {
+        try {
+          const base64 = await baixarDanfseOficialBase64(nota.id)
+          baixarBase64ComoArquivo(base64, `DANFSe-${nota.numero_nfse}.pdf`)
+          return
+        } catch (err) {
+          console.warn('DANFSE oficial indisponível, usando comprovante do sistema:', err.message)
+        }
+      }
       await baixarComprovantePdf(nota, nota.clientes)
     } catch (err) {
       alert(`Erro ao gerar PDF: ${err.message}`)
@@ -146,7 +183,17 @@ export default function NfseEmitir() {
     if (!nota.clientes?.email) { alert('Este cliente não tem e-mail cadastrado.'); return }
     setEnviandoId(nota.id)
     try {
-      const pdfBase64 = await gerarComprovantePdfBase64(nota, nota.clientes)
+      let pdfBase64 = null
+      if (nota.ambiente === 'producao' && nota.numero_nfse) {
+        try {
+          pdfBase64 = await baixarDanfseOficialBase64(nota.id)
+        } catch (err) {
+          console.warn('DANFSE oficial indisponível, usando comprovante do sistema:', err.message)
+        }
+      }
+      if (!pdfBase64) {
+        pdfBase64 = await gerarComprovantePdfBase64(nota, nota.clientes)
+      }
       const attachments = [{ filename: `NFSe-${nota.numero_nfse || nota.id}.pdf`, contentBase64: pdfBase64 }]
       if (nota.xml_resposta) {
         attachments.push({ filename: `NFSe-${nota.numero_nfse || nota.id}.xml`, contentBase64: textoParaBase64Utf8(nota.xml_resposta) })
