@@ -198,9 +198,10 @@ export default function NfseEmitir() {
       if (nota.xml_resposta) {
         attachments.push({ filename: `NFSe-${nota.numero_nfse || nota.id}.xml`, contentBase64: textoParaBase64Utf8(nota.xml_resposta) })
       }
+      const { data: { session } } = await supabase.auth.getSession()
       const resp = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({
           to: nota.clientes.email,
           subject: `Nota Fiscal ${nota.numero_nfse || ''} — CARSANT Contabilidade`,

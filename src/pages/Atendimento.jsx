@@ -102,9 +102,10 @@ export default function Atendimento() {
     const templateInfo = TEMPLATES.find(t => t.id === template)
     setEnviandoEmail(true)
     try {
+      const { data: { session } } = await supabase.auth.getSession()
       const resp = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({
           to: cliente.email,
           subject: `CARSANT Contabilidade — ${templateInfo?.label.replace(/^[^\w]+/, '') || 'Mensagem'}`,

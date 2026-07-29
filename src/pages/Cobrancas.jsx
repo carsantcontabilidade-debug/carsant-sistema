@@ -53,10 +53,12 @@ function htmlSemLinkAutomatico(texto) {
 }
 
 async function chamarEdgeFunction(action, payload) {
+  const { data: { session } } = await supabase.auth.getSession();
   const resp = await fetch(`/api/inter-cobranca`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token}`,
     },
     body: JSON.stringify({ action, payload }),
   });
@@ -661,9 +663,10 @@ export default function Cobrancas() {
       console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
     const resp = await fetch("/api/send-email", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
       body: JSON.stringify({
         to: email,
         subject: assunto,

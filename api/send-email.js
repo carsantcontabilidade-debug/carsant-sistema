@@ -1,9 +1,37 @@
+import { createClient } from '@supabase/supabase-js';
 import { buildTransport } from './_mailer.js';
+
+// Envia e-mail em nome da CARSANT via SMTP próprio — usado por telas
+// internas (Cobrancas, Notas Fiscais, Atendimento) pra mandar boleto/nota
+// pro cliente. Precisa ser gestor/colaborador autenticado: sem essa
+// checagem (corrigida em 2026-07-29, revisão de segurança), qualquer um na
+// internet podia usar este endpoint como um relay de e-mail em nome da
+// CARSANT, inclusive com anexo — o vetor exato de golpe que o Ronaldo
+// descreveu (mandar "boleto" falso pra cliente parecendo vir do escritório).
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) {
+    return res.status(401).json({ error: 'Não autenticado.' });
+  }
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: userData, error: userError } = await authClient.auth.getUser(token);
+  if (userError || !userData?.user) {
+    return res.status(401).json({ error: 'Sessão inválida.' });
+  }
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data: perfil } = await admin.from('profiles').select('role').eq('id', userData.user.id).single();
+  if (!perfil) {
+    return res.status(403).json({ error: 'Apenas a equipe pode enviar e-mail pelo sistema.' });
   }
 
   const { to, subject, text, html, attachmentBase64, attachmentFilename, attachments: attachmentsExtras } = req.body || {};
