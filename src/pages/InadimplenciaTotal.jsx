@@ -29,26 +29,29 @@ export default function InadimplenciaTotal() {
   const [busca, setBusca] = useState('')
   const [periodoInicio, setPeriodoInicio] = useState({ mes: 0, ano: anoAtual - 1 })
   const [periodoFim, setPeriodoFim] = useState({ mes: hoje.getMonth(), ano: anoAtual })
+  const [saldos, setSaldos] = useState([])
   const [modalDetalhe, setModalDetalhe] = useState(null) // cliente
   const [modalDesconto, setModalDesconto] = useState(null) // cliente
   const [formDesconto, setFormDesconto] = useState({ valor: '', motivo: '' })
   const [salvandoDesconto, setSalvandoDesconto] = useState(false)
-  const [editandoSaldo, setEditandoSaldo] = useState(null) // cliente
-  const [saldoForm, setSaldoForm] = useState('')
+  const [modalSaldo, setModalSaldo] = useState(null) // cliente
+  const [formSaldo, setFormSaldo] = useState({ tipo: '', valor: '', descricao: '' })
   const [salvandoSaldo, setSalvandoSaldo] = useState(false)
 
   useEffect(() => { fetchDados() }, [])
 
   async function fetchDados() {
     setLoading(true)
-    const [{ data: c }, { data: p }, { data: d }] = await Promise.all([
-      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio, saldo_devedor_migrado').gt('valor_honorario', 0).order('nome'),
+    const [{ data: c }, { data: p }, { data: d }, { data: s }] = await Promise.all([
+      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio').gt('valor_honorario', 0).order('nome'),
       supabase.from('pagamentos_honorarios').select('cliente_id, mes, ano, pago, isento, oculto'),
       supabase.from('descontos_honorarios').select('*').order('created_at', { ascending: false }),
+      supabase.from('saldos_migrados').select('*').order('created_at', { ascending: false }),
     ])
     setClientes(c || [])
     setPagamentos(p || [])
     setDescontos(d || [])
+    setSaldos(s || [])
     setLoading(false)
   }
 
@@ -85,18 +88,23 @@ export default function InadimplenciaTotal() {
     }
 
     const totalAtrasoPeriodo = mesesEmAtraso.reduce((s, m) => s + m.valor, 0)
-    const saldoMigrado = cliente.saldo_devedor_migrado || 0
+    const saldosCliente = saldos.filter(s => s.cliente_id === cliente.id)
+    const saldoMigrado = saldosCliente.reduce((s, x) => s + x.valor, 0)
     const descontosCliente = descontos.filter(d => d.cliente_id === cliente.id)
     const totalDescontos = descontosCliente.reduce((s, d) => s + d.valor, 0)
     const totalDevedor = Math.max(0, totalAtrasoPeriodo + saldoMigrado - totalDescontos)
 
-    return { mesesEmAtraso, totalAtrasoPeriodo, saldoMigrado, descontosCliente, totalDescontos, totalDevedor }
+    return { mesesEmAtraso, totalAtrasoPeriodo, saldoMigrado, saldosCliente, descontosCliente, totalDescontos, totalDevedor }
   }
 
+  // Com busca ativa, mostra o cliente mesmo sem dívida calculada ainda
+  // (senão não tem como abrir um cliente "zerado" só pra lançar o saldo
+  // migrado do outro sistema — ele nunca apareceria na lista). Sem
+  // busca, mantém só quem já está devendo, pra não poluir a visão geral.
   const linhas = clientes
     .filter(c => c.nome.toLowerCase().includes(busca.toLowerCase()))
     .map(c => ({ cliente: c, ...calcularCliente(c) }))
-    .filter(l => l.totalDevedor > 0)
+    .filter(l => busca.trim() !== '' || l.totalDevedor > 0)
     .sort((a, b) => b.totalDevedor - a.totalDevedor)
 
   const totalGeral = linhas.reduce((s, l) => s + l.totalDevedor, 0)
@@ -129,19 +137,28 @@ export default function InadimplenciaTotal() {
     }
   }
 
-  function abrirEditarSaldo(cliente) {
-    setEditandoSaldo(cliente)
-    setSaldoForm(String(cliente.saldo_devedor_migrado || ''))
+  function abrirSaldo(cliente) {
+    setModalSaldo(cliente)
+    setFormSaldo({ tipo: '', valor: '', descricao: '' })
   }
 
-  async function salvarSaldoMigrado(e) {
+  async function salvarSaldo(e) {
     e.preventDefault()
+    const valor = parseFloat(formSaldo.valor)
+    if (!formSaldo.tipo.trim()) { alert('Informe o tipo do saldo (ex: acordo, mensalidades em atraso).'); return }
+    if (!valor || valor <= 0) { alert('Informe um valor maior que zero.'); return }
     setSalvandoSaldo(true)
     try {
-      const valor = parseFloat(saldoForm) || 0
-      const { error } = await supabase.from('clientes').update({ saldo_devedor_migrado: valor }).eq('id', editandoSaldo.id)
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await supabase.from('saldos_migrados').insert({
+        cliente_id: modalSaldo.id,
+        tipo: formSaldo.tipo.trim(),
+        valor,
+        descricao: formSaldo.descricao || null,
+        lancado_por: user?.id,
+      })
       if (error) throw error
-      setEditandoSaldo(null)
+      setModalSaldo(null)
       fetchDados()
     } catch (err) {
       alert(`Não foi possível salvar o saldo: ${err.message}`)
@@ -224,7 +241,7 @@ export default function InadimplenciaTotal() {
                       <button onClick={() => abrirDesconto(l.cliente)} className="btn-ghost btn-sm gap-1 text-gray-500" title="Aplicar desconto">
                         <Percent className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => abrirEditarSaldo(l.cliente)} className="btn-ghost btn-sm gap-1 text-gray-500" title="Editar saldo migrado de outro sistema">
+                      <button onClick={() => abrirSaldo(l.cliente)} className="btn-ghost btn-sm gap-1 text-gray-500" title="Lançar saldo migrado de outro sistema">
                         <Wallet className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -268,6 +285,24 @@ export default function InadimplenciaTotal() {
                   ))}
                 </div>
               </div>
+
+              {modalDetalhe.saldosCliente.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">Saldos migrados de outro sistema</p>
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {modalDetalhe.saldosCliente.map(s => (
+                      <div key={s.id} className="flex justify-between text-sm">
+                        <span className="text-gray-600">
+                          <span className="font-medium text-gray-700">{s.tipo}</span>
+                          {s.descricao ? ` — ${s.descricao}` : ''}
+                          {' · '}{new Date(s.created_at).toLocaleDateString('pt-BR')}
+                        </span>
+                        <span className="text-gray-800">{fmt(s.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {modalDetalhe.descontosCliente.length > 0 && (
                 <div>
@@ -319,25 +354,33 @@ export default function InadimplenciaTotal() {
       )}
 
       {/* Modal saldo migrado */}
-      {editandoSaldo && (
+      {modalSaldo && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">Saldo devedor migrado</h2>
-                <button onClick={() => setEditandoSaldo(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                <h2 className="text-lg font-bold text-gray-900">Lançar saldo migrado</h2>
+                <button onClick={() => setModalSaldo(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
               </div>
-              <p className="text-sm text-gray-500 mb-4">{editandoSaldo.nome} — valor trazido de outro sistema, antes deste sistema existir.</p>
-              <form onSubmit={salvarSaldoMigrado} className="space-y-3">
+              <p className="text-sm text-gray-500 mb-4">{modalSaldo.nome} — valor trazido de outro sistema, antes deste sistema existir. Pode lançar mais de um (ex: um de acordo, outro de mensalidades atrasadas).</p>
+              <form onSubmit={salvarSaldo} className="space-y-3">
                 <div className="form-group">
-                  <label className="form-label">Saldo devedor (R$)</label>
-                  <input type="number" step="0.01" min="0" className="input" value={saldoForm} onChange={e => setSaldoForm(e.target.value)} autoFocus />
+                  <label className="form-label">Tipo *</label>
+                  <input className="input" value={formSaldo.tipo} onChange={e => setFormSaldo(f => ({ ...f, tipo: e.target.value }))} placeholder="Ex: Acordo, Mensalidades em atraso..." required autoFocus />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Valor (R$) *</label>
+                  <input type="number" step="0.01" min="0.01" className="input" value={formSaldo.valor} onChange={e => setFormSaldo(f => ({ ...f, valor: e.target.value }))} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Descrição (opcional)</label>
+                  <input className="input" value={formSaldo.descricao} onChange={e => setFormSaldo(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe adicional" />
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button type="submit" disabled={salvandoSaldo} className="btn-primary flex-1 justify-center">
                     {salvandoSaldo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
                   </button>
-                  <button type="button" onClick={() => setEditandoSaldo(null)} className="btn-secondary">Cancelar</button>
+                  <button type="button" onClick={() => setModalSaldo(null)} className="btn-secondary">Cancelar</button>
                 </div>
               </form>
             </div>
