@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Trash2, Ban } from 'lucide-react'
+import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Ban, EyeOff, Eye } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -16,6 +16,7 @@ export default function Honorarios() {
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [ocultarIsentos, setOcultarIsentos] = useState(false)
+  const [mostrarOcultos, setMostrarOcultos] = useState(false)
 
   useEffect(() => { fetchDados() }, [mesAtivo, anoAtivo])
 
@@ -32,6 +33,7 @@ export default function Honorarios() {
 
   function statusCliente(c) {
     const registro = pagamentos.find(p => p.cliente_id === c.id)
+    if (registro?.oculto) return 'oculto'
     if (registro?.isento) return 'isento'
     if (registro?.pago) return 'pago'
     const venc = new Date(anoAtivo, mesAtivo, c.dia_vencimento || 10)
@@ -70,11 +72,27 @@ export default function Honorarios() {
     return pagamentos.find(p => p.cliente_id === clienteId)
   }
 
-  async function excluirRegistro(clienteId) {
+  // "Excluir" aqui não apaga a linha do banco (isso fazia o status
+  // voltar a ser calculado pela data de vencimento, virando "pendente"
+  // de novo — não era o esperado). Em vez disso marca "oculto": o
+  // cliente some da lista deste mês por completo (não conta em nenhum
+  // total, não aparece nem como pendente nem como isento). Reversível
+  // via "Mostrar ocultos".
+  async function ocultarRegistro(clienteId) {
+    if (!window.confirm('Remover este cliente da lista deste mês? Ele não vai contar em nenhum total (nem aparecer como pendente) até ser restaurado.')) return
+    const existente = registroExistente(clienteId)
+    if (existente) {
+      await supabase.from('pagamentos_honorarios').update({ oculto: true }).eq('id', existente.id)
+    } else {
+      await supabase.from('pagamentos_honorarios').insert({ cliente_id: clienteId, mes: mesAtivo, ano: anoAtivo, oculto: true })
+    }
+    fetchDados()
+  }
+
+  async function restaurarRegistro(clienteId) {
     const existente = registroExistente(clienteId)
     if (!existente) return
-    if (!window.confirm('Excluir o registro deste mês para este cliente (pago ou isenção)? O status volta a ser calculado normalmente (pendente/atraso).')) return
-    await supabase.from('pagamentos_honorarios').delete().eq('id', existente.id)
+    await supabase.from('pagamentos_honorarios').update({ oculto: false }).eq('id', existente.id)
     fetchDados()
   }
 
@@ -86,12 +104,13 @@ export default function Honorarios() {
 
   const filtrados = clientes.filter(c => {
     const st = statusCliente(c)
+    if (st === 'oculto' && !mostrarOcultos) return false
     if (ocultarIsentos && st === 'isento') return false
     return c.nome.toLowerCase().includes(busca.toLowerCase()) && (!filtroStatus || st === filtroStatus)
   })
 
-  // Isentos não entram em nenhum total do mês (não são cobrança esperada).
-  const clientesCobraveis = clientes.filter(c => statusCliente(c) !== 'isento')
+  // Isentos e ocultos não entram em nenhum total do mês (não são cobrança esperada).
+  const clientesCobraveis = clientes.filter(c => !['isento', 'oculto'].includes(statusCliente(c)))
   const totalMes = clientesCobraveis.reduce((s, c) => s + (c.valor_honorario || 0), 0)
   const recebido = clientesCobraveis.filter(c => statusCliente(c) === 'pago').reduce((s, c) => s + (c.valor_honorario || 0), 0)
   const emAtraso = clientesCobraveis.filter(c => statusCliente(c) === 'atraso').reduce((s, c) => s + (c.valor_honorario || 0), 0)
@@ -162,10 +181,15 @@ export default function Honorarios() {
           <option value="pendente">Pendentes</option>
           <option value="atraso">Em atraso</option>
           <option value="isento">Isentos</option>
+          <option value="oculto">Ocultos</option>
         </select>
         <label className="flex items-center gap-1.5 text-sm text-gray-600 px-1">
           <input type="checkbox" className="accent-brand-600" checked={ocultarIsentos} onChange={e => setOcultarIsentos(e.target.checked)} />
           Ocultar isentos
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 px-1">
+          <input type="checkbox" className="accent-brand-600" checked={mostrarOcultos} onChange={e => setMostrarOcultos(e.target.checked)} />
+          Mostrar ocultos deste mês
         </label>
       </div>
 
@@ -182,8 +206,8 @@ export default function Honorarios() {
             <tbody>
               {filtrados.map(c => {
                 const st = statusCliente(c)
-                const stBadge = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red', isento: 'badge-gray' }[st]
-                const stLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', isento: 'Isento' }[st]
+                const stBadge = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red', isento: 'badge-gray', oculto: 'badge-gray' }[st]
+                const stLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', isento: 'Isento', oculto: 'Oculto' }[st]
                 return (
                   <tr key={c.id}>
                     <td>
@@ -196,6 +220,11 @@ export default function Honorarios() {
                     <td><span className={stBadge}>{stLabel}</span></td>
                     <td>
                       <div className="flex items-center gap-1.5">
+                        {st === 'oculto' && (
+                          <button onClick={() => restaurarRegistro(c.id)} className="btn-ghost btn-sm gap-1.5 text-blue-600">
+                            <Eye className="w-3.5 h-3.5" /> Restaurar
+                          </button>
+                        )}
                         {st === 'pago' && (
                           <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
                             <RefreshCw className="w-3.5 h-3.5" /> Desfazer
@@ -211,9 +240,9 @@ export default function Honorarios() {
                             </button>
                           </>
                         )}
-                        {registroExistente(c.id) && (
-                          <button onClick={() => excluirRegistro(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50" title="Excluir registro deste mês">
-                            <Trash2 className="w-3.5 h-3.5" />
+                        {st !== 'oculto' && (
+                          <button onClick={() => ocultarRegistro(c.id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50" title="Remover da lista deste mês (não conta em nenhum total)">
+                            <EyeOff className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
