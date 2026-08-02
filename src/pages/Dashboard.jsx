@@ -125,7 +125,7 @@ export default function Dashboard() {
       )}
 
       {/* Alertas */}
-      {(tarefasAtrasadas.length > 0 || inadimplentes.length > 0 || certidoesVencidasOuVencendo.length > 0) && (
+      {(tarefasAtrasadas.length > 0 || (isGestor && inadimplentes.length > 0) || certidoesVencidasOuVencendo.length > 0) && (
         <div className="space-y-2 mb-6">
           {tarefasAtrasadas.length > 0 && (
             <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -136,7 +136,7 @@ export default function Dashboard() {
               </button>
             </div>
           )}
-          {inadimplentes.length > 0 && (
+          {isGestor && inadimplentes.length > 0 && (
             <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span>{inadimplentes.length} cliente{inadimplentes.length > 1 ? 's' : ''} com honorário em atraso</span>
@@ -157,30 +157,36 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Saldo */}
-      <div className={`rounded-2xl p-6 mb-6 flex items-center justify-between ${saldo >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-        <div>
-          <p className="text-sm font-medium text-gray-600">Saldo do mês — {format(hoje, 'MMMM/yyyy', { locale: ptBR })}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Honorários ({fmt(totalHonorarios)}) − Despesas ({fmt(totalDespesas)})</p>
+      {/* Saldo — só gestor, dado financeiro da empresa */}
+      {isGestor && (
+        <div className={`rounded-2xl p-6 mb-6 flex items-center justify-between ${saldo >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+          <div>
+            <p className="text-sm font-medium text-gray-600">Saldo do mês — {format(hoje, 'MMMM/yyyy', { locale: ptBR })}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Honorários ({fmt(totalHonorarios)}) − Despesas ({fmt(totalDespesas)})</p>
+          </div>
+          <div className={`text-3xl font-bold flex items-center gap-2 ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            {saldo >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+            {saldo < 0 ? '-' : ''}{fmt(Math.abs(saldo))}
+          </div>
         </div>
-        <div className={`text-3xl font-bold flex items-center gap-2 ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-          {saldo >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-          {saldo < 0 ? '-' : ''}{fmt(Math.abs(saldo))}
-        </div>
-      </div>
+      )}
 
-      {/* KPIs */}
+      {/* KPIs — os dois primeiros (financeiros) só pra gestor */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
-          <div className="stat-label">Total honorários/mês</div>
-          <div className="stat-value text-brand-700">{fmt(totalHonorarios)}</div>
-          <div className="stat-sub">{clientes.length} clientes</div>
-        </div>
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
-          <div className="stat-label">Em atraso</div>
-          <div className="stat-value text-red-600">{inadimplentes.length}</div>
-          <div className="stat-sub">clientes inadimplentes</div>
-        </div>
+        {isGestor && (
+          <>
+            <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
+              <div className="stat-label">Total honorários/mês</div>
+              <div className="stat-value text-brand-700">{fmt(totalHonorarios)}</div>
+              <div className="stat-sub">{clientes.length} clientes</div>
+            </div>
+            <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
+              <div className="stat-label">Em atraso</div>
+              <div className="stat-value text-red-600">{inadimplentes.length}</div>
+              <div className="stat-sub">clientes inadimplentes</div>
+            </div>
+          </>
+        )}
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/tarefas')}>
           <div className="stat-label">Tarefas atrasadas</div>
           <div className="stat-value text-red-600">{tarefasAtrasadas.length}</div>
