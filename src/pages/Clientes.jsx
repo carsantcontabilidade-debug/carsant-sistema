@@ -42,7 +42,7 @@ async function buscarCnpjComRetry(cnpjLimpo, tentativas = 3) {
 }
 
 const emptyForm = {
-  nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10,
+  nome: '', cnpj: '', regime: '', valor_honorario: '', dia_vencimento: 10, honorario_inicio: '',
   telefone: '', email: '', email2: '', tipo: 'recorrente', obrigacoes: [],
   logradouro: '', numero_endereco: '', complemento: '', bairro: '', cep: '',
   uf: '', codigo_municipio_ibge: '',
@@ -89,7 +89,7 @@ export default function Clientes() {
   function abrirEditar(c) {
     setForm({
       nome: c.nome || '', cnpj: c.cnpj || '', regime: c.regime || '',
-      valor_honorario: c.valor_honorario || '', dia_vencimento: c.dia_vencimento || 10,
+      valor_honorario: c.valor_honorario || '', dia_vencimento: c.dia_vencimento || 10, honorario_inicio: c.honorario_inicio || '',
       telefone: c.telefone || '', email: c.email || '', email2: c.email2 || '',
       tipo: c.tipo || 'recorrente', obrigacoes: c.obrigacoes || [],
       logradouro: c.logradouro || '', numero_endereco: c.numero_endereco || '',
@@ -166,7 +166,7 @@ export default function Clientes() {
     if (!form.nome) return
     setSaving(true)
     const obrigacoes = Object.entries(obrSel).filter(([,v]) => v.sel).map(([id,v]) => ({ id, resp: v.resp }))
-    const payload = { ...form, valor_honorario: parseFloat(form.valor_honorario) || 0, dia_vencimento: parseInt(form.dia_vencimento) || 10, obrigacoes }
+    const payload = { ...form, valor_honorario: parseFloat(form.valor_honorario) || 0, dia_vencimento: parseInt(form.dia_vencimento) || 10, honorario_inicio: form.honorario_inicio || null, obrigacoes }
     const { error } = editId
       ? await supabase.from('clientes').update(payload).eq('id', editId)
       : await supabase.from('clientes').insert(payload)
@@ -700,6 +700,11 @@ export default function Clientes() {
                 <div className="form-group">
                   <label className="form-label">Dia de vencimento</label>
                   <input type="number" min={1} max={31} className="input" value={form.dia_vencimento} onChange={e => setForm(f => ({...f, dia_vencimento: e.target.value}))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Cobrar honorário a partir de (opcional)</label>
+                  <input type="date" className="input" value={form.honorario_inicio} onChange={e => setForm(f => ({...f, honorario_inicio: e.target.value}))} />
+                  <p className="text-xs text-gray-500 mt-1">Meses antes desta data não aparecem em Honorários (nem pendente, nem atraso). Deixe em branco pra valer desde sempre.</p>
                 </div>
                 <div className="form-group">
                   <label className="form-label">WhatsApp / Telefone</label>

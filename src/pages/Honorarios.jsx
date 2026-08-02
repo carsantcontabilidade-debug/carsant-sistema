@@ -33,7 +33,20 @@ export default function Honorarios() {
     setLoading(false)
   }
 
+  // Mês/ano selecionados são anteriores ao mês em que o cliente
+  // começou a ser cobrado? Se sim, esse mês simplesmente não se aplica
+  // a ele — nem pendente, nem atraso (cliente sem essa data preenchida
+  // continua valendo pra todos os meses, como sempre foi).
+  function antesDoInicio(c) {
+    if (!c.honorario_inicio) return false
+    const inicio = new Date(`${c.honorario_inicio}T00:00:00`)
+    const inicioAnoMes = inicio.getFullYear() * 12 + inicio.getMonth()
+    const selecionadoAnoMes = anoAtivo * 12 + mesAtivo
+    return selecionadoAnoMes < inicioAnoMes
+  }
+
   function statusCliente(c) {
+    if (antesDoInicio(c)) return 'fora_periodo'
     const registro = pagamentos.find(p => p.cliente_id === c.id)
     if (registro?.oculto) return 'oculto'
     if (registro?.isento) return 'isento'
@@ -152,13 +165,15 @@ export default function Honorarios() {
 
   const filtrados = clientes.filter(c => {
     const st = statusCliente(c)
+    if (st === 'fora_periodo') return false
     if (st === 'oculto' && !mostrarOcultos) return false
     if (ocultarIsentos && st === 'isento') return false
     return c.nome.toLowerCase().includes(busca.toLowerCase()) && (!filtroStatus || st === filtroStatus)
   })
 
-  // Isentos e ocultos não entram em nenhum total do mês (não são cobrança esperada).
-  const clientesCobraveis = clientes.filter(c => !['isento', 'oculto'].includes(statusCliente(c)))
+  // Isentos, ocultos e meses fora do período de cobrança não entram em
+  // nenhum total do mês (não são cobrança esperada).
+  const clientesCobraveis = clientes.filter(c => !['isento', 'oculto', 'fora_periodo'].includes(statusCliente(c)))
   const totalMes = clientesCobraveis.reduce((s, c) => s + (c.valor_honorario || 0), 0)
   const recebido = clientesCobraveis.filter(c => statusCliente(c) === 'pago').reduce((s, c) => s + (c.valor_honorario || 0), 0)
   const emAtraso = clientesCobraveis.filter(c => statusCliente(c) === 'atraso').reduce((s, c) => s + (c.valor_honorario || 0), 0)
