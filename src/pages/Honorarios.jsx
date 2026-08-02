@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Ban, EyeOff, Eye } from 'lucide-react'
+import { CheckCircle, RefreshCw, Search, Filter, Loader2, TrendingUp, AlertCircle, Clock, Ban, EyeOff, Eye, Square, CheckSquare } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -17,8 +17,10 @@ export default function Honorarios() {
   const [filtroStatus, setFiltroStatus] = useState('')
   const [ocultarIsentos, setOcultarIsentos] = useState(false)
   const [mostrarOcultos, setMostrarOcultos] = useState(false)
+  const [selecionados, setSelecionados] = useState([])
+  const [processandoLote, setProcessandoLote] = useState(false)
 
-  useEffect(() => { fetchDados() }, [mesAtivo, anoAtivo])
+  useEffect(() => { fetchDados(); setSelecionados([]) }, [mesAtivo, anoAtivo])
 
   async function fetchDados() {
     setLoading(true)
@@ -56,20 +58,26 @@ export default function Honorarios() {
     fetchDados()
   }
 
+  function registroExistente(clienteId) {
+    return pagamentos.find(p => p.cliente_id === clienteId)
+  }
+
   // Isentar = "esse mês não se aplica" pra esse cliente (férias, pausa,
   // erro de cobrança) — diferente de pago, não conta em nenhum total.
-  async function marcarIsento(clienteId) {
-    const existente = pagamentos.find(p => p.cliente_id === clienteId)
+  // Versão "núcleo" sem fetchDados — reutilizada pelo clique individual
+  // e pela ação em lote, que só recarrega uma vez no final.
+  async function marcarIsentoSemRecarregar(clienteId) {
+    const existente = registroExistente(clienteId)
     if (existente) {
-      await supabase.from('pagamentos_honorarios').update({ isento: true, pago: false, data_pagamento: null }).eq('id', existente.id)
+      await supabase.from('pagamentos_honorarios').update({ isento: true, pago: false, oculto: false, data_pagamento: null }).eq('id', existente.id)
     } else {
       await supabase.from('pagamentos_honorarios').insert({ cliente_id: clienteId, mes: mesAtivo, ano: anoAtivo, isento: true })
     }
-    fetchDados()
   }
 
-  function registroExistente(clienteId) {
-    return pagamentos.find(p => p.cliente_id === clienteId)
+  async function marcarIsento(clienteId) {
+    await marcarIsentoSemRecarregar(clienteId)
+    fetchDados()
   }
 
   // "Excluir" aqui não apaga a linha do banco (isso fazia o status
@@ -78,14 +86,18 @@ export default function Honorarios() {
   // cliente some da lista deste mês por completo (não conta em nenhum
   // total, não aparece nem como pendente nem como isento). Reversível
   // via "Mostrar ocultos".
-  async function ocultarRegistro(clienteId) {
-    if (!window.confirm('Remover este cliente da lista deste mês? Ele não vai contar em nenhum total (nem aparecer como pendente) até ser restaurado.')) return
+  async function ocultarRegistroSemRecarregar(clienteId) {
     const existente = registroExistente(clienteId)
     if (existente) {
       await supabase.from('pagamentos_honorarios').update({ oculto: true }).eq('id', existente.id)
     } else {
       await supabase.from('pagamentos_honorarios').insert({ cliente_id: clienteId, mes: mesAtivo, ano: anoAtivo, oculto: true })
     }
+  }
+
+  async function ocultarRegistro(clienteId) {
+    if (!window.confirm('Remover este cliente da lista deste mês? Ele não vai contar em nenhum total (nem aparecer como pendente) até ser restaurado.')) return
+    await ocultarRegistroSemRecarregar(clienteId)
     fetchDados()
   }
 
@@ -94,6 +106,42 @@ export default function Honorarios() {
     if (!existente) return
     await supabase.from('pagamentos_honorarios').update({ oculto: false }).eq('id', existente.id)
     fetchDados()
+  }
+
+  function alternarSelecionado(clienteId) {
+    setSelecionados(sel => sel.includes(clienteId) ? sel.filter(id => id !== clienteId) : [...sel, clienteId])
+  }
+
+  function alternarSelecionarTodosVisiveis() {
+    const idsVisiveis = filtrados.map(c => c.id)
+    const todosSelecionados = idsVisiveis.length > 0 && idsVisiveis.every(id => selecionados.includes(id))
+    setSelecionados(todosSelecionados ? [] : idsVisiveis)
+  }
+
+  async function isentarSelecionados() {
+    if (selecionados.length === 0) return
+    if (!window.confirm(`Isentar ${selecionados.length} cliente(s) selecionado(s) neste mês?`)) return
+    setProcessandoLote(true)
+    try {
+      await Promise.all(selecionados.map(marcarIsentoSemRecarregar))
+      setSelecionados([])
+      fetchDados()
+    } finally {
+      setProcessandoLote(false)
+    }
+  }
+
+  async function ocultarSelecionados() {
+    if (selecionados.length === 0) return
+    if (!window.confirm(`Remover ${selecionados.length} cliente(s) selecionado(s) da lista deste mês? Não vão contar em nenhum total até serem restaurados.`)) return
+    setProcessandoLote(true)
+    try {
+      await Promise.all(selecionados.map(ocultarRegistroSemRecarregar))
+      setSelecionados([])
+      fetchDados()
+    } finally {
+      setProcessandoLote(false)
+    }
   }
 
   // Meses para o seletor
@@ -193,6 +241,20 @@ export default function Honorarios() {
         </label>
       </div>
 
+      {/* Barra de ações em lote — só aparece com algo selecionado */}
+      {selecionados.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm font-medium text-blue-900">{selecionados.length} cliente(s) selecionado(s)</span>
+          <button onClick={isentarSelecionados} disabled={processandoLote} className="btn-secondary btn-sm gap-1.5 text-gray-600 disabled:opacity-50">
+            {processandoLote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />} Isentar selecionados
+          </button>
+          <button onClick={ocultarSelecionados} disabled={processandoLote} className="btn-secondary btn-sm gap-1.5 text-red-600 disabled:opacity-50">
+            {processandoLote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <EyeOff className="w-3.5 h-3.5" />} Remover selecionados
+          </button>
+          <button onClick={() => setSelecionados([])} className="btn-ghost btn-sm ml-auto">Limpar seleção</button>
+        </div>
+      )}
+
       {/* Tabela */}
       <div className="table-container">
         {loading ? (
@@ -200,6 +262,11 @@ export default function Honorarios() {
         ) : (
           <table className="table">
             <thead><tr>
+              <th className="w-8">
+                <button onClick={alternarSelecionarTodosVisiveis} className="flex items-center text-gray-400 hover:text-gray-600" title="Selecionar todos os visíveis">
+                  {filtrados.length > 0 && filtrados.every(c => selecionados.includes(c.id)) ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
+                </button>
+              </th>
               <th>Cliente</th><th>Regime</th><th>Honorário</th>
               <th>Vencimento</th><th>Status</th><th>Ações</th>
             </tr></thead>
@@ -210,6 +277,11 @@ export default function Honorarios() {
                 const stLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', isento: 'Isento', oculto: 'Oculto' }[st]
                 return (
                   <tr key={c.id}>
+                    <td>
+                      <button onClick={() => alternarSelecionado(c.id)} className="flex items-center text-gray-400 hover:text-gray-600">
+                        {selecionados.includes(c.id) ? <CheckSquare className="w-4 h-4 text-brand-600" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td>
                       <div className="font-medium text-gray-900">{c.nome}</div>
                       {c.telefone && <div className="text-xs text-gray-500">{c.telefone}</div>}
@@ -251,7 +323,7 @@ export default function Honorarios() {
                 )
               })}
               {filtrados.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-10 text-gray-500">Nenhum registro encontrado</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-gray-500">Nenhum registro encontrado</td></tr>
               )}
             </tbody>
           </table>
