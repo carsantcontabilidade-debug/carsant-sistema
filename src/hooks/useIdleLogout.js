@@ -1,7 +1,17 @@
 import { useEffect, useRef } from 'react'
 
 const EVENTOS_ATIVIDADE = ['mousedown', 'keydown', 'scroll', 'touchstart']
-const CHAVE_ULTIMA_ATIVIDADE = 'carsant_ultima_atividade'
+export const CHAVE_ULTIMA_ATIVIDADE = 'carsant_ultima_atividade'
+
+// Chame isto logo que um login for bem-sucedido (AuthContext/
+// PortalAuthContext). Sem isso, um valor antigo deixado no
+// sessionStorage por uma sessão de horas atrás (mesma aba) faz o
+// próximo login ser deslogado na hora — o hook, ao montar, vê "última
+// atividade" de horas atrás e acha que já expirou, mesmo o usuário tendo
+// acabado de digitar a senha. Bug real encontrado em 2026-07-29.
+export function registrarLoginComoAtividade() {
+  sessionStorage.setItem(CHAVE_ULTIMA_ATIVIDADE, String(Date.now()))
+}
 
 // Desloga automaticamente depois de `minutos` sem nenhuma interação do
 // usuário (mouse/teclado/toque/scroll). Complementa a troca pra

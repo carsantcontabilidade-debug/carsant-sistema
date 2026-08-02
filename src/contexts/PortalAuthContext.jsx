@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useIdleLogout } from '../hooks/useIdleLogout'
+import { useIdleLogout, registrarLoginComoAtividade } from '../hooks/useIdleLogout'
 
 const PortalAuthContext = createContext({})
 
@@ -91,6 +91,10 @@ export function PortalAuthProvider({ children }) {
 
   async function signIn(email, password) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
+    // Sem isto, um "última atividade" antigo (de horas atrás, mesma aba)
+    // podia fazer o login recém-feito ser deslogado na hora pelo
+    // useIdleLogout, sem nenhuma mensagem de erro visível.
+    if (!error) registrarLoginComoAtividade()
     return { error }
   }
 
