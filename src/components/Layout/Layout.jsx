@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   LayoutDashboard, Users, DollarSign, CreditCard,
   CheckSquare, Headphones, Calendar, LogOut,
-  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings, ShieldCheck
+  Menu, X, FileText, Wallet, ChevronDown, ChevronRight, Receipt, FolderOpen, FileSignature, Settings, ShieldCheck, AlertTriangle
 } from 'lucide-react'
 
 const navItems = [
@@ -17,6 +17,7 @@ const navItems = [
     somenteGestor: true,
     children: [
       { to: '/honorarios',   icon: DollarSign, label: 'Honorários' },
+      { to: '/inadimplencia', icon: AlertTriangle, label: 'Inadimplência' },
       { to: '/cobrancas',    icon: Receipt,    label: 'Cobranças' },
       { to: '/contas-pagar', icon: CreditCard, label: 'Contas a Pagar' },
       { to: '/nfse-emitir',  icon: FileSignature, label: 'Notas Fiscais' },

@@ -13,10 +13,15 @@ const STATUS_LABEL = {
   em_atraso: { label: "Em atraso", color: "#dc2626", bg: "#fee2e2" },
 };
 
+// `mes` é 0-indexado (0=janeiro), igual ao que fica salvo em
+// pagamentos_honorarios (mesmo padrão de Honorarios.jsx). Bug real
+// encontrado em 2026-08: esta função e o restante da tela usavam mês
+// 1-indexado (1-12) só aqui, consultando a tabela com o mês errado —
+// "Janeiro" no seletor buscava os pagamentos salvos como fevereiro.
 function getStatusKey(pag, diaVencimento, mes, ano) {
   if (!pag) {
     const hoje = new Date();
-    const venc = new Date(ano, mes - 1, diaVencimento);
+    const venc = new Date(ano, mes, diaVencimento);
     return hoje > venc ? "em_atraso" : "pendente";
   }
   return "pago";
@@ -25,7 +30,7 @@ function getStatusKey(pag, diaVencimento, mes, ano) {
 export default function RelatorioInadimplencia() {
   const { profile } = useAuth();
   const hoje = new Date();
-  const [mes, setMes] = useState(hoje.getMonth() + 1);
+  const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -72,7 +77,7 @@ export default function RelatorioInadimplencia() {
           status: statusKey,
           data_pagamento: pag?.data_pagamento || null,
           vencimento: c.dia_vencimento
-            ? `${String(c.dia_vencimento).padStart(2, "0")}/${String(mes).padStart(2, "0")}/${ano}`
+            ? `${String(c.dia_vencimento).padStart(2, "0")}/${String(mes + 1).padStart(2, "0")}/${ano}`
             : "—",
         };
       });
@@ -118,7 +123,7 @@ export default function RelatorioInadimplencia() {
       const element = previewRef.current;
       const opt = {
         margin: [10, 10, 10, 10],
-        filename: `CARSANT-Honorarios-${MESES[mes - 1]}-${ano}.pdf`,
+        filename: `CARSANT-Honorarios-${MESES[mes]}-${ano}.pdf`,
         image: { type: "jpeg", quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -152,7 +157,7 @@ export default function RelatorioInadimplencia() {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             {MESES.map((m, i) => (
-              <option key={i} value={i + 1}>{m}</option>
+              <option key={i} value={i}>{m}</option>
             ))}
           </select>
         </div>
@@ -281,7 +286,7 @@ export default function RelatorioInadimplencia() {
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <p style={{ fontSize: "16px", fontWeight: "bold", color: "#374151", margin: 0 }}>Relatório de Honorários</p>
-                      <p style={{ fontSize: "12px", color: "#6b7280", margin: "2px 0 0" }}>{MESES[mes - 1]} / {ano}</p>
+                      <p style={{ fontSize: "12px", color: "#6b7280", margin: "2px 0 0" }}>{MESES[mes]} / {ano}</p>
                       <p style={{ fontSize: "11px", color: "#9ca3af", margin: "2px 0 0" }}>Emitido em: {new Date().toLocaleDateString("pt-BR")}</p>
                     </div>
                   </div>

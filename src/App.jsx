@@ -16,6 +16,7 @@ const Tarefas = lazy(() => import('./pages/Tarefas'))
 const Atendimento = lazy(() => import('./pages/Atendimento'))
 const Agenda = lazy(() => import('./pages/Agenda'))
 const RelatorioInadimplencia = lazy(() => import('./pages/RelatorioInadimplencia'))
+const InadimplenciaTotal = lazy(() => import('./pages/InadimplenciaTotal'))
 const Comunicacao = lazy(() => import('./pages/Comunicacao'))
 const Cobrancas = lazy(() => import('./pages/Cobrancas'))
 const NfseEmitir = lazy(() => import('./pages/NfseEmitir'))
@@ -112,6 +113,7 @@ export default function App() {
           <Route path="clientes" element={<Clientes />} />
           <Route path="tarefas" element={<Tarefas />} />
           <Route path="honorarios" element={<GestorRoute><Honorarios /></GestorRoute>} />
+          <Route path="inadimplencia" element={<GestorRoute><InadimplenciaTotal /></GestorRoute>} />
           <Route path="contas-pagar" element={<GestorRoute><ContasPagar /></GestorRoute>} />
           <Route path="relatorio" element={<GestorRoute><RelatorioInadimplencia /></GestorRoute>} />
           <Route path="atendimento" element={<Atendimento />} />
