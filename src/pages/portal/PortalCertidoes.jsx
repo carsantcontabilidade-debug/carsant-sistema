@@ -151,7 +151,7 @@ export default function PortalCertidoes() {
                       {emitindo === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Emitir agora
                     </button>
                   )}
-                  {!automatizavel && link && (
+                  {link && (
                     <button onClick={() => abrirPortalOficial(t.id)} className="btn-secondary btn-sm gap-1.5" title="Abrir portal oficial (CNPJ copiado)">
                       <ExternalLink className="w-3.5 h-3.5" /> Portal oficial
                     </button>

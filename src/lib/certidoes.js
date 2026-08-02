@@ -33,6 +33,10 @@ export const ESTADOS_AUTOMATIZADOS = ['BA'];
 // que sair procurando toda vez. Nem todo lugar tem um portal online
 // conhecido (prefeituras pequenas às vezes só atendem presencial).
 export const PORTAL_OFICIAL_ESTADUAL = {
+  // BA tem emissão automática (ver ESTADOS_AUTOMATIZADOS), mas o link
+  // também fica disponível como apoio pra quando a automação falhar por
+  // algum motivo (cadastro incompleto, site fora do ar etc.).
+  BA: 'https://servicos.sefaz.ba.gov.br/sistemas/DSCRE/Modulos/Publico/EmissaoCertidao.aspx',
   MG: 'https://www.mg.gov.br/servico/emitir-certidao-de-debitos-tributarios-cdt',
   MT: 'https://www.sefaz.mt.gov.br/cnd/certidao/servlet/ServletRotdAberto?origem=57',
   PR: 'https://refis.fazenda.pr.gov.br/servicos/Empresa/Certidoes/Emitir-Certidao-Negativa-Receita-Estadual-kZrX5gol',
@@ -40,6 +44,12 @@ export const PORTAL_OFICIAL_ESTADUAL = {
 };
 
 export const PORTAL_OFICIAL_MUNICIPAL = {
+  // Feira de Santana e Riachão do Jacuípe têm emissão automática (ver
+  // MUNICIPIOS_AUTOMATIZADOS), mas o link também fica disponível como
+  // apoio pra quando a automação falhar (cadastro incompleto no CEAF,
+  // formato de resposta inesperado da e-contrib, site fora do ar etc.).
+  '2910800': 'https://www.sefaz.feiradesantana.ba.gov.br/?pg=servicosonline&Certidao-de-debitos=1', // Feira de Santana
+  '2926301': 'https://riachaodojacuipe.ba.gov.br/', // Riachão do Jacuípe (só site institucional — não achei um link direto e estável do formulário da e-contrib)
   '2927408': 'https://servicosweb.sefaz.salvador.ba.gov.br/sistema/certidao_negativa/servicos_certidao_negativa.asp', // Salvador
   '2914505': 'https://www.municipioonline.com.br/ba/prefeitura/irara/contribuinte/certidao', // Irará
   '2931905': 'https://www.municipioonline.com.br/ba/prefeitura/tucano/contribuinte/certidao', // Tucano

@@ -245,7 +245,7 @@ export default function Certidoes() {
                 </button>
               )}
 
-              {!temAutomacao(modal.cliente, modal.tipo) && portalDeApoio(modal.cliente, modal.tipo) && (
+              {portalDeApoio(modal.cliente, modal.tipo) && (
                 <button
                   onClick={() => abrirPortalOficial(modal.cliente, modal.tipo)}
                   className="w-full flex items-center justify-center gap-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-lg px-3 py-2 hover:bg-gray-100 mb-4"
