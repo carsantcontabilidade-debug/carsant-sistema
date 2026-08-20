@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer, XCircle, Repeat, X } from 'lucide-react'
+import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer, XCircle, Repeat, X, Square, CheckSquare, Send } from 'lucide-react'
 import { baixarComprovantePdf, gerarComprovantePdfBase64, textoParaBase64Utf8 } from '../lib/nfsePdf'
 
 const MESES = [
@@ -90,7 +90,151 @@ export default function NfseEmitir() {
   const [substituindo, setSubstituindo] = useState(false)
   const previewRef = useRef(null)
 
+  // Emissão para cliente cadastrado (individual e em lote) — antes só
+  // existia via prompt em Clientes.jsx, sem escolher a competência.
+  const [clientesDisponiveis, setClientesDisponiveis] = useState([])
+  const [modoEmissaoReal, setModoEmissaoReal] = useState('individual') // 'individual' | 'lote'
+  const [competenciaEmissaoMes, setCompetenciaEmissaoMes] = useState(hoje.getMonth() + 1)
+  const [competenciaEmissaoAno, setCompetenciaEmissaoAno] = useState(hoje.getFullYear())
+  const [ambienteEmissao, setAmbienteEmissao] = useState('producao')
+  const [buscaClienteEmissao, setBuscaClienteEmissao] = useState('')
+  const [clienteEmissaoId, setClienteEmissaoId] = useState('')
+  const [valorEmissao, setValorEmissao] = useState('')
+  const [discriminacaoEmissao, setDiscriminacaoEmissao] = useState('')
+  const [emitindoReal, setEmitindoReal] = useState(false)
+  const [resultadoEmissaoReal, setResultadoEmissaoReal] = useState(null)
+  const [loteClientesSelecionados, setLoteClientesSelecionados] = useState([])
+  const [loteEmitindoNotas, setLoteEmitindoNotas] = useState(false)
+  const [loteProgressoNotas, setLoteProgressoNotas] = useState({ atual: 0, total: 0 })
+  const [loteResultadosNotas, setLoteResultadosNotas] = useState([])
+
   useEffect(() => { buscarNotas() }, [mes, ano, campoFiltroData, filtroAmbiente])
+  useEffect(() => { carregarClientesParaEmissao() }, [])
+
+  async function carregarClientesParaEmissao() {
+    const { data } = await supabase.from('clientes').select('id, nome, cnpj, valor_honorario, logradouro, email').order('nome')
+    setClientesDisponiveis((data || []).filter((c) => c.cnpj))
+  }
+
+  function competenciaEmissaoIso() {
+    return `${competenciaEmissaoAno}-${String(competenciaEmissaoMes).padStart(2, '0')}-01`
+  }
+
+  function discriminacaoPadrao() {
+    return `Honorários contábeis referentes a ${MESES[competenciaEmissaoMes - 1]}/${competenciaEmissaoAno}`
+  }
+
+  function selecionarClienteEmissao(id) {
+    setClienteEmissaoId(id)
+    setResultadoEmissaoReal(null)
+    const c = clientesDisponiveis.find((x) => x.id === id)
+    if (c) {
+      setValorEmissao(c.valor_honorario ? String(c.valor_honorario) : '')
+      setDiscriminacaoEmissao(discriminacaoPadrao())
+    }
+  }
+
+  const clientesFiltradosEmissao = clientesDisponiveis.filter((c) =>
+    c.nome.toLowerCase().includes(buscaClienteEmissao.toLowerCase())
+  )
+
+  async function emitirNotaIndividualReal() {
+    const cliente = clientesDisponiveis.find((c) => c.id === clienteEmissaoId)
+    if (!cliente) { alert('Selecione um cliente.'); return }
+    if (!cliente.logradouro) { alert('Este cliente não tem endereço cadastrado — necessário para emitir NFS-e (cálculo de impostos pós-reforma tributária). Complete o cadastro em Clientes.'); return }
+    const valor = parseFloat(String(valorEmissao).replace(',', '.'))
+    if (!valor || valor <= 0) { alert('Informe um valor de serviço válido.'); return }
+    if (!discriminacaoEmissao || discriminacaoEmissao.trim().length < 10) { alert('A discriminação precisa ter pelo menos 10 caracteres.'); return }
+
+    if (ambienteEmissao === 'producao') {
+      const confirmacao = window.prompt(`⚠️ Isso vai emitir uma NFS-e REAL de ${fmtValor(valor)} para ${cliente.nome} (competência ${MESES[competenciaEmissaoMes - 1]}/${competenciaEmissaoAno}) — não é ambiente de teste.\n\nDigite PRODUCAO (sem acento) para confirmar:`)
+      if (confirmacao !== 'PRODUCAO') { alert('Confirmação incorreta — emissão cancelada.'); return }
+    } else if (!window.confirm(`Emitir NFS-e de ${fmtValor(valor)} para ${cliente.nome}? (ambiente de HOMOLOGAÇÃO — teste)`)) {
+      return
+    }
+
+    setEmitindoReal(true)
+    setResultadoEmissaoReal(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/nfse-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          ambiente: ambienteEmissao,
+          clienteId: cliente.id,
+          dados: { valorServicos: valor, discriminacao: discriminacaoEmissao, competencia: competenciaEmissaoIso() },
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Falha ao emitir NFS-e')
+      setResultadoEmissaoReal(data)
+      buscarNotas()
+    } catch (err) {
+      alert(`Erro ao emitir: ${err.message}`)
+    } finally {
+      setEmitindoReal(false)
+    }
+  }
+
+  function alternarClienteLoteEmissao(id) {
+    setLoteClientesSelecionados((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]))
+  }
+
+  async function emitirNotasEmLote() {
+    const selecionados = clientesDisponiveis.filter((c) => loteClientesSelecionados.includes(c.id))
+    if (selecionados.length === 0) { alert('Selecione ao menos um cliente.'); return }
+    const semEndereco = selecionados.filter((c) => !c.logradouro)
+    if (semEndereco.length > 0) {
+      alert(`${semEndereco.length} cliente(s) selecionado(s) sem endereço cadastrado — remova da seleção ou complete o cadastro antes de emitir:\n${semEndereco.map((c) => c.nome).join(', ')}`)
+      return
+    }
+    const validos = selecionados.filter((c) => c.valor_honorario)
+    const semValor = selecionados.length - validos.length
+    if (semValor > 0 && !window.confirm(`${semValor} cliente(s) selecionado(s) sem valor de honorário cadastrado vão ser pulados. Continuar com os outros ${validos.length}?`)) return
+    if (validos.length === 0) { alert('Nenhum cliente selecionado tem valor de honorário cadastrado.'); return }
+
+    if (ambienteEmissao === 'producao') {
+      const confirmacao = window.prompt(`⚠️ Isso vai emitir ${validos.length} NFS-e REAIS (produção), competência ${MESES[competenciaEmissaoMes - 1]}/${competenciaEmissaoAno} — não é ambiente de teste.\n\nDigite PRODUCAO (sem acento) para confirmar:`)
+      if (confirmacao !== 'PRODUCAO') { alert('Confirmação incorreta — emissão cancelada.'); return }
+    } else if (!window.confirm(`Emitir ${validos.length} NFS-e em ambiente de HOMOLOGAÇÃO (teste)?`)) {
+      return
+    }
+
+    setLoteEmitindoNotas(true)
+    setLoteResultadosNotas([])
+    setLoteProgressoNotas({ atual: 0, total: validos.length })
+    const competencia = competenciaEmissaoIso()
+    const discriminacao = discriminacaoPadrao()
+    const resultados = []
+    for (let i = 0; i < validos.length; i++) {
+      const cliente = validos[i]
+      setLoteProgressoNotas({ atual: i + 1, total: validos.length })
+      // O WebISS exige um intervalo mínimo entre chamadas (rate limit) —
+      // mesma pausa já usada no lote de Cobrancas.jsx.
+      if (i > 0) await new Promise((r) => setTimeout(r, 5500))
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const resp = await fetch('/api/nfse-emitir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+          body: JSON.stringify({
+            ambiente: ambienteEmissao,
+            clienteId: cliente.id,
+            dados: { valorServicos: cliente.valor_honorario, discriminacao, competencia },
+          }),
+        })
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || 'Falha ao emitir')
+        resultados.push({ cliente, status: 'ok', numero: data.numero, codigoVerificacao: data.codigoVerificacao })
+      } catch (e) {
+        resultados.push({ cliente, status: 'erro', mensagem: e.message })
+      }
+      setLoteResultadosNotas([...resultados])
+    }
+    setLoteEmitindoNotas(false)
+    buscarNotas()
+  }
 
   async function buscarNotas() {
     setCarregandoNotas(true)
@@ -608,6 +752,153 @@ export default function NfseEmitir() {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="border-t border-gray-200 pt-6">
+        <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e para cliente cadastrado</h2>
+        <p className="text-sm text-gray-500 mb-4">Individual ou em lote, escolhendo a competência — usa os dados já cadastrados do cliente (endereço, CNPJ) e o certificado da CARSANT.</p>
+
+        <div className="card p-5 space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setModoEmissaoReal('individual')}
+                className={`px-4 py-2 text-sm font-medium ${modoEmissaoReal === 'individual' ? 'bg-brand-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                Individual
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoEmissaoReal('lote')}
+                className={`px-4 py-2 text-sm font-medium ${modoEmissaoReal === 'lote' ? 'bg-brand-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                Em lote
+              </button>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Competência</label>
+              <div className="flex gap-1.5">
+                <select className="select" value={competenciaEmissaoMes} onChange={(e) => setCompetenciaEmissaoMes(Number(e.target.value))}>
+                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+                <select className="select w-24" value={competenciaEmissaoAno} onChange={(e) => setCompetenciaEmissaoAno(Number(e.target.value))}>
+                  {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Ambiente</label>
+              <select className="select" value={ambienteEmissao} onChange={(e) => setAmbienteEmissao(e.target.value)}>
+                <option value="producao">Produção (nota real)</option>
+                <option value="homologacao">Homologação (teste)</option>
+              </select>
+            </div>
+          </div>
+
+          {ambienteEmissao === 'producao' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>Ambiente de <strong>PRODUÇÃO</strong> — a(s) nota(s) emitida(s) aqui têm efeito fiscal real perante a Prefeitura.</span>
+            </div>
+          )}
+
+          {modoEmissaoReal === 'individual' ? (
+            <div className="space-y-4">
+              <div className="form-group">
+                <label className="form-label">Cliente</label>
+                <input
+                  className="input mb-2"
+                  placeholder="Buscar cliente..."
+                  value={buscaClienteEmissao}
+                  onChange={(e) => setBuscaClienteEmissao(e.target.value)}
+                />
+                <select className="select" value={clienteEmissaoId} onChange={(e) => selecionarClienteEmissao(e.target.value)} size={6}>
+                  <option value="" disabled>Selecione um cliente...</option>
+                  {clientesFiltradosEmissao.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome}{c.valor_honorario ? ` — ${fmtValor(c.valor_honorario)}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {clienteEmissaoId && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="form-group">
+                      <label className="form-label">Valor dos Serviços (R$)</label>
+                      <input type="number" step="0.01" className="input" value={valorEmissao} onChange={(e) => setValorEmissao(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Discriminação do serviço</label>
+                    <textarea className="textarea" rows={2} value={discriminacaoEmissao} onChange={(e) => setDiscriminacaoEmissao(e.target.value)} />
+                  </div>
+                  <button type="button" onClick={emitirNotaIndividualReal} disabled={emitindoReal} className="btn-primary gap-2">
+                    {emitindoReal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {emitindoReal ? 'Emitindo...' : 'Emitir NFS-e'}
+                  </button>
+                </>
+              )}
+
+              {resultadoEmissaoReal && (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800">
+                  ✅ NFS-e emitida ({resultadoEmissaoReal.ambiente})! Número: <strong>{resultadoEmissaoReal.numero}</strong> · Código de verificação: <strong>{resultadoEmissaoReal.codigoVerificacao}</strong>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="form-group">
+                <label className="form-label">Clientes ({loteClientesSelecionados.length} selecionado{loteClientesSelecionados.length !== 1 ? 's' : ''})</label>
+                <input
+                  className="input mb-2"
+                  placeholder="Buscar cliente..."
+                  value={buscaClienteEmissao}
+                  onChange={(e) => setBuscaClienteEmissao(e.target.value)}
+                />
+                <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-gray-100">
+                  {clientesFiltradosEmissao.map((c) => (
+                    <button
+                      type="button"
+                      key={c.id}
+                      onClick={() => alternarClienteLoteEmissao(c.id)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      {loteClientesSelecionados.includes(c.id) ? <CheckSquare className="w-4 h-4 text-brand-600 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                      <span className="flex-1 truncate">{c.nome}</span>
+                      <span className="text-gray-500 flex-shrink-0">{c.valor_honorario ? fmtValor(c.valor_honorario) : 'sem honorário'}</span>
+                    </button>
+                  ))}
+                  {clientesFiltradosEmissao.length === 0 && (
+                    <div className="px-3 py-4 text-center text-sm text-gray-400">Nenhum cliente encontrado</div>
+                  )}
+                </div>
+              </div>
+
+              <button type="button" onClick={emitirNotasEmLote} disabled={loteEmitindoNotas || loteClientesSelecionados.length === 0} className="btn-primary gap-2">
+                {loteEmitindoNotas ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {loteEmitindoNotas
+                  ? `Emitindo ${loteProgressoNotas.atual}/${loteProgressoNotas.total}...`
+                  : `Emitir ${loteClientesSelecionados.length || ''} NFS-e`}
+              </button>
+
+              {loteResultadosNotas.length > 0 && (
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                  {loteResultadosNotas.map((r, i) => (
+                    <div key={i} className="px-3 py-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-gray-800">{r.cliente.nome}</span>
+                      {r.status === 'ok' ? (
+                        <span className="text-green-700">Nº {r.numero}</span>
+                      ) : (
+                        <span className="text-red-600 truncate max-w-xs" title={r.mensagem}>{r.mensagem}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {notaSubstituir && (
