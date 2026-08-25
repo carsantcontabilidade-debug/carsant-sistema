@@ -23,14 +23,23 @@ export default function ContasPagar() {
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  // Importação automática (XML de nota fiscal / PDF de boleto)
+  // Importação automática (XML de nota fiscal / PDF de boleto) — suporta
+  // selecionar vários arquivos de uma vez (ex: vários boletos do DDA
+  // baixados juntos). `filaImportar` guarda os arquivos ainda não
+  // processados desta sessão; `arquivoImportado` é sempre o item atual em
+  // conferência. Continua exigindo revisão antes de salvar CADA um — a
+  // leitura automática do PDF não é garantida (ver importarConta.js) — só
+  // evita ter que reabrir o modal e escolher arquivo de novo pra cada um.
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
+  const [filaImportar, setFilaImportar] = useState([])
+  const [indiceFila, setIndiceFila] = useState(0)
   const [arquivoImportado, setArquivoImportado] = useState(null)
   const [analisando, setAnalisando] = useState(false)
   const [formImportar, setFormImportar] = useState(emptyImportForm)
   const [avisoImportacao, setAvisoImportacao] = useState('')
   const [textoExtraidoPdf, setTextoExtraidoPdf] = useState('')
   const [salvandoImportacao, setSalvandoImportacao] = useState(false)
+  const [importadosNaFila, setImportadosNaFila] = useState(0)
 
   useEffect(() => { fetchDados() }, [mesAtivo, anoAtivo])
 
@@ -83,11 +92,38 @@ export default function ContasPagar() {
   }
 
   function abrirImportar() {
+    setFilaImportar([])
+    setIndiceFila(0)
+    setImportadosNaFila(0)
     setArquivoImportado(null)
     setFormImportar(emptyImportForm)
     setAvisoImportacao('')
     setTextoExtraidoPdf('')
     setModalImportarOpen(true)
+  }
+
+  // Chamado quando o usuário escolhe um ou mais arquivos no input — guarda
+  // a lista inteira e começa processando o primeiro.
+  function selecionarArquivos(fileList) {
+    const arquivos = Array.from(fileList || [])
+    if (arquivos.length === 0) return
+    setFilaImportar(arquivos)
+    setIndiceFila(0)
+    setImportadosNaFila(0)
+    processarArquivo(arquivos[0])
+  }
+
+  // Pula o arquivo atual (não reconhecido, ou o usuário decidiu não
+  // importar) e avança pro próximo da fila, se houver.
+  function pularArquivo() {
+    const proximo = indiceFila + 1
+    if (proximo < filaImportar.length) {
+      setIndiceFila(proximo)
+      processarArquivo(filaImportar[proximo])
+    } else {
+      setModalImportarOpen(false)
+      if (importadosNaFila > 0) fetchDados()
+    }
   }
 
   // Dia do vencimento extraído (AAAA-MM-DD) vira só o número do dia —
@@ -186,8 +222,19 @@ export default function ContasPagar() {
       }
       const { error } = await supabase.from('despesas').insert(payload)
       if (error) throw error
-      setModalImportarOpen(false)
-      fetchDados()
+      setImportadosNaFila(n => n + 1)
+
+      // Se tem mais arquivos na fila (seleção múltipla), já processa o
+      // próximo em vez de fechar o modal — evita reabrir/reselecionar pra
+      // cada boleto quando o usuário importa vários de uma vez.
+      const proximo = indiceFila + 1
+      if (proximo < filaImportar.length) {
+        setIndiceFila(proximo)
+        await processarArquivo(filaImportar[proximo])
+      } else {
+        setModalImportarOpen(false)
+        fetchDados()
+      }
     } catch (err) {
       alert(`Erro ao salvar: ${err.message}`)
     } finally {
@@ -298,7 +345,9 @@ export default function ContasPagar() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModalImportarOpen(false)}>
           <div className="modal">
             <div className="modal-header">
-              <h2 className="text-lg font-semibold">Importar arquivo</h2>
+              <h2 className="text-lg font-semibold">
+                Importar arquivo{filaImportar.length > 1 && ` (${indiceFila + 1} de ${filaImportar.length})`}
+              </h2>
               <button onClick={() => setModalImportarOpen(false)} className="btn-ghost p-2"><X className="w-5 h-5"/></button>
             </div>
             <div className="modal-body space-y-4">
@@ -306,12 +355,19 @@ export default function ContasPagar() {
                 <label className="form-label">Nota fiscal (.xml) ou boleto (.pdf)</label>
                 <input
                   type="file"
+                  multiple
                   accept=".xml,.pdf,application/xml,text/xml,application/pdf"
                   className="input"
-                  onChange={e => processarArquivo(e.target.files?.[0] || null)}
+                  onChange={e => selecionarArquivos(e.target.files)}
                 />
-                <p className="text-xs text-gray-500 mt-1">FGTS, INSS, água, luz, telefone, internet, plano de saúde, nota fiscal de fornecedor...</p>
+                <p className="text-xs text-gray-500 mt-1">FGTS, INSS, água, luz, telefone, internet, plano de saúde, nota fiscal de fornecedor... Pode selecionar vários arquivos de uma vez (ex: os boletos do DDA baixados juntos) — eles são revisados e salvos um por um.</p>
               </div>
+
+              {filaImportar.length > 1 && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-3 py-2 text-xs">
+                  {importadosNaFila} de {filaImportar.length} já importados nesta sessão.
+                </div>
+              )}
 
               {analisando && (
                 <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Lendo o arquivo...</div>
@@ -348,8 +404,14 @@ export default function ContasPagar() {
             </div>
             <div className="modal-footer">
               <button onClick={() => setModalImportarOpen(false)} className="btn-secondary">Cancelar</button>
+              {filaImportar.length > 1 && (
+                <button onClick={pularArquivo} disabled={salvandoImportacao || analisando} className="btn-secondary">
+                  Pular este
+                </button>
+              )}
               <button onClick={salvarImportacao} disabled={salvandoImportacao || !arquivoImportado || analisando} className="btn-primary">
-                {salvandoImportacao ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} Salvar despesa
+                {salvandoImportacao ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
+                {' '}Salvar{indiceFila + 1 < filaImportar.length ? ' e ir para o próximo' : ' despesa'}
               </button>
             </div>
           </div>
