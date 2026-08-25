@@ -111,6 +111,15 @@ export default function Cobrancas() {
   const [clienteForm, setClienteForm] = useState(null);
   const [baixaForm, setBaixaForm] = useState({ dataPagamento: "", formaPagamento: "dinheiro" });
 
+  // Cadastro rápido de cliente novo, direto do formulário de cobrança —
+  // grava na mesma tabela `clientes` usada em Clientes.jsx (não é um
+  // registro à parte), só com os campos essenciais pra já gerar a
+  // cobrança. Endereço/obrigações etc. ficam pra completar depois em
+  // Clientes.jsx, se precisar (ex: pra emitir NFS-e).
+  const [mostrarNovoCliente, setMostrarNovoCliente] = useState(false);
+  const [novoClienteForm, setNovoClienteForm] = useState({ nome: "", cnpj: "", valor_honorario: "", dia_vencimento: "10", telefone: "", email: "" });
+  const [criandoCliente, setCriandoCliente] = useState(false);
+
   // Lote
   const [loteSelecionados, setLoteSelecionados] = useState([]);
   const [loteBusca, setLoteBusca] = useState("");
@@ -164,6 +173,7 @@ export default function Cobrancas() {
       emitir_nota: false,
     });
     setClienteForm(clientePre);
+    setMostrarNovoCliente(false);
     setErro("");
     setSucesso("");
     setModalTipo("nova");
@@ -188,6 +198,44 @@ export default function Cobrancas() {
       }));
     } else {
       setForm(f => ({ ...f, cliente_id: clienteId }));
+    }
+  }
+
+  function abrirNovoClienteRapido() {
+    setNovoClienteForm({ nome: "", cnpj: "", valor_honorario: form.valor || "", dia_vencimento: "10", telefone: "", email: "" });
+    setMostrarNovoCliente(true);
+  }
+
+  async function criarClienteRapido() {
+    if (!novoClienteForm.nome.trim()) {
+      setErro("Informe o nome do cliente.");
+      return;
+    }
+    setCriandoCliente(true);
+    setErro("");
+    try {
+      const { data: novoCliente, error } = await supabase.from("clientes").insert({
+        nome: novoClienteForm.nome.trim(),
+        cnpj: novoClienteForm.cnpj.trim() || null,
+        valor_honorario: parseFloat(String(novoClienteForm.valor_honorario).replace(",", ".")) || 0,
+        dia_vencimento: parseInt(novoClienteForm.dia_vencimento) || 10,
+        telefone: novoClienteForm.telefone.trim() || null,
+        email: novoClienteForm.email.trim() || null,
+        tipo: "recorrente",
+      }).select().single();
+      if (error) throw error;
+
+      // Mesma tabela usada em Clientes.jsx — não é um cadastro à parte,
+      // já aparece lá também. Endereço/regime/obrigações ficam em
+      // branco, completáveis depois se precisar (ex: pra emitir NFS-e).
+      setClientes(atual => [...atual, novoCliente].sort((a, b) => a.nome.localeCompare(b.nome)));
+      onChangeCliente(novoCliente.id);
+      setMostrarNovoCliente(false);
+      setSucesso(`Cliente "${novoCliente.nome}" cadastrado.`);
+    } catch (err) {
+      setErro(`Não foi possível cadastrar o cliente: ${err.message}`);
+    } finally {
+      setCriandoCliente(false);
     }
   }
 
@@ -1030,16 +1078,62 @@ export default function Cobrancas() {
 
                   {/* Cliente */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                    <select value={form.cliente_id} onChange={e => onChangeCliente(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Selecione o cliente...</option>
-                      {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
-                    {clienteForm && (
-                      <div className="mt-1 text-xs text-gray-400 flex gap-3">
-                        {clienteForm.cnpj && <span>CNPJ: {clienteForm.cnpj}</span>}
-                        {clienteForm["valor_honorario"] && <span>Honorário: {formatarValor(clienteForm["valor_honorario"])}</span>}
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">Cliente *</label>
+                      {!mostrarNovoCliente && (
+                        <button type="button" onClick={abrirNovoClienteRapido} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                          + Cadastrar novo cliente
+                        </button>
+                      )}
+                    </div>
+                    {!mostrarNovoCliente ? (
+                      <>
+                        <select value={form.cliente_id} onChange={e => onChangeCliente(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="">Selecione o cliente...</option>
+                          {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        </select>
+                        {clienteForm && (
+                          <div className="mt-1 text-xs text-gray-400 flex gap-3">
+                            {clienteForm.cnpj && <span>CNPJ: {clienteForm.cnpj}</span>}
+                            {clienteForm["valor_honorario"] && <span>Honorário: {formatarValor(clienteForm["valor_honorario"])}</span>}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 space-y-2">
+                        <input type="text" value={novoClienteForm.nome} onChange={e => setNovoClienteForm(f => ({ ...f, nome: e.target.value }))}
+                          placeholder="Nome / Razão social *" autoFocus
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="text" value={novoClienteForm.cnpj} onChange={e => setNovoClienteForm(f => ({ ...f, cnpj: e.target.value }))}
+                            placeholder="CPF/CNPJ"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="text" value={novoClienteForm.telefone} onChange={e => setNovoClienteForm(f => ({ ...f, telefone: e.target.value }))}
+                            placeholder="Telefone"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="number" step="0.01" value={novoClienteForm.valor_honorario} onChange={e => setNovoClienteForm(f => ({ ...f, valor_honorario: e.target.value }))}
+                            placeholder="Honorário mensal (R$)"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="number" min="1" max="31" value={novoClienteForm.dia_vencimento} onChange={e => setNovoClienteForm(f => ({ ...f, dia_vencimento: e.target.value }))}
+                            placeholder="Dia de vencimento"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <input type="email" value={novoClienteForm.email} onChange={e => setNovoClienteForm(f => ({ ...f, email: e.target.value }))}
+                          placeholder="E-mail"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <p className="text-xs text-gray-500">Endereço e outros dados podem ser completados depois em Clientes (necessário pra emitir NFS-e).</p>
+                        <div className="flex gap-2 pt-1">
+                          <button type="button" onClick={criarClienteRapido} disabled={criandoCliente}
+                            className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">
+                            {criandoCliente ? "Salvando..." : "Salvar cliente"}
+                          </button>
+                          <button type="button" onClick={() => setMostrarNovoCliente(false)} className="text-sm text-gray-500 px-4 py-1.5 hover:text-gray-700">
+                            Cancelar
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
