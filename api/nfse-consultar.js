@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { consultarNfseServicoPrestado, consultarNfsePorFaixa } from './webiss-nfse.js';
+import { consultarNfseServicoPrestado, consultarNfsePorFaixa } from './_webiss-nfse.js';
 
 // Consulta NFS-e já emitidas pela CARSANT no WebISS. Só um gestor
 // autenticado pode chamar. Mesmo padrão de auth de api/nfse-emitir.js.

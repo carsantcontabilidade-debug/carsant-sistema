@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SETORES } from '../lib/chat'
-import { Loader2, UserPlus, Download, Mail } from 'lucide-react'
+import { Loader2, UserPlus, Download, Mail, Webhook } from 'lucide-react'
 
 const ROLE_LABEL = { gestor: 'Gestor', colaborador: 'Colaborador' }
 
@@ -13,6 +13,8 @@ export default function Configuracoes() {
   const [mensagem, setMensagem] = useState(null)
   const [salvandoId, setSalvandoId] = useState(null)
   const [baixandoBackup, setBaixandoBackup] = useState(false)
+  const [configurandoWebhook, setConfigurandoWebhook] = useState(false)
+  const [mensagemWebhook, setMensagemWebhook] = useState(null)
 
   useEffect(() => { carregarColaboradores() }, [])
 
@@ -76,6 +78,27 @@ export default function Configuracoes() {
       alert(err.message)
     } finally {
       setBaixandoBackup(false)
+    }
+  }
+
+  async function configurarWebhookInter() {
+    setConfigurandoWebhook(true)
+    setMensagemWebhook(null)
+    try {
+      const webhookUrl = `${window.location.origin}/api/inter-webhook`
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/inter-cobranca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ action: 'configurar_webhook', payload: { webhookUrl } }),
+      })
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error)
+      setMensagemWebhook({ tipo: 'sucesso', texto: `Webhook registrado no Inter: ${webhookUrl}` })
+    } catch (err) {
+      setMensagemWebhook({ tipo: 'erro', texto: err.message })
+    } finally {
+      setConfigurandoWebhook(false)
     }
   }
 
@@ -182,6 +205,30 @@ export default function Configuracoes() {
             {baixandoBackup ? 'Gerando...' : 'Baixar backup agora'}
           </button>
           <p className="text-xs text-gray-400 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Backup semanal automático: toda segunda-feira de madrugada.</p>
+        </div>
+      </div>
+
+      {/* Webhook Inter */}
+      <div className="card">
+        <div className="card-header flex items-center gap-2">
+          <Webhook className="w-4 h-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Sincronização automática de cobranças (Banco Inter)</h2>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-gray-600">
+            Registra no Inter o endereço que ele deve avisar sempre que o status de uma cobrança mudar (pago, cancelado, vencido) —
+            assim o sistema atualiza sozinho, sem precisar abrir cobrança por cobrança pra conferir. Precisa rodar só uma vez
+            (ou de novo se o endereço do site mudar).
+          </p>
+          <button onClick={configurarWebhookInter} disabled={configurandoWebhook} className="btn-primary gap-1.5">
+            {configurandoWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : <Webhook className="w-4 h-4" />}
+            {configurandoWebhook ? 'Registrando...' : 'Registrar webhook no Inter'}
+          </button>
+          {mensagemWebhook && (
+            <div className={`px-4 py-3 rounded-lg text-sm ${mensagemWebhook.tipo === 'sucesso' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              {mensagemWebhook.texto}
+            </div>
+          )}
         </div>
       </div>
     </div>

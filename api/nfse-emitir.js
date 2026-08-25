@@ -3,7 +3,7 @@ import {
   montarDpsAssinada, enviarGerarNfse, parseNfseResposta,
   montarCancelarNfseEnvio, enviarCancelarNfse,
   montarSubstituirNfseEnvio, enviarSubstituirNfse,
-} from './webiss-nfse.js';
+} from './_webiss-nfse.js';
 import { baixarDanfseOficialPdf } from './_webiss-portal.js';
 
 // Emite/cancela/substitui uma NFS-e via WebISS. Só um gestor autenticado

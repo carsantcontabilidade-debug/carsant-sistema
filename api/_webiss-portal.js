@@ -1,7 +1,7 @@
 // Acesso à área logada do portal WebISS (feiradesantanaba.webiss.com.br) só
 // para baixar o DANFSE oficial de uma NFS-e já emitida pela CARSANT.
 //
-// É um mecanismo DIFERENTE da emissão (webiss-nfse.js), que usa o certificado
+// É um mecanismo DIFERENTE da emissão (_webiss-nfse.js), que usa o certificado
 // A1 pra assinar o XML enviado por SOAP. Aqui é login comum (usuário/senha)
 // na área web do prestador — confirmado por teste real em 29/07/2026 que:
 // - O captcha só existe na página pública de "validar nota de terceiros"

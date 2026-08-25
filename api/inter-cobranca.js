@@ -1,96 +1,9 @@
-import https from 'https';
 import { createClient } from '@supabase/supabase-js';
-
-const INTER_BASE_URL = 'cdpj.partners.bancointer.com.br';
+import { interRequest, autenticar, configurarWebhookCobranca } from './_inter.js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function buildAgent() {
-  return new https.Agent({
-    cert: process.env.INTER_CERT_PEM,
-    key: process.env.INTER_KEY_PEM,
-  });
-}
-
-function interRequest({ path, method = 'GET', body, headers = {}, agent }) {
-  return new Promise((resolve, reject) => {
-    const data = body ? JSON.stringify(body) : null;
-    const options = {
-      hostname: INTER_BASE_URL,
-      path,
-      method,
-      agent,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-        ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
-      },
-    };
-
-    const req = https.request(options, (res) => {
-      let raw = '';
-      res.on('data', (chunk) => { raw += chunk; });
-      res.on('end', () => {
-        let parsed;
-        try {
-          parsed = raw ? JSON.parse(raw) : {};
-        } catch (e) {
-          parsed = { rawResponse: raw };
-        }
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(parsed);
-        } else {
-          reject({ status: res.statusCode, body: parsed });
-        }
-      });
-    });
-
-    req.on('error', (err) => reject({ status: 0, body: { message: err.message } }));
-    if (data) req.write(data);
-    req.end();
-  });
-}
-
-async function obterToken(agent) {
-  const params = new URLSearchParams({
-    client_id: process.env.INTER_CLIENT_ID,
-    client_secret: process.env.INTER_CLIENT_SECRET,
-    grant_type: 'client_credentials',
-    scope: 'boleto-cobranca.write boleto-cobranca.read',
-  });
-
-  return new Promise((resolve, reject) => {
-    const body = params.toString();
-    const options = {
-      hostname: INTER_BASE_URL,
-      path: '/oauth/v2/token',
-      method: 'POST',
-      agent,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    };
-    const req = https.request(options, (res) => {
-      let raw = '';
-      res.on('data', (c) => (raw += c));
-      res.on('end', () => {
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch (e) { parsed = { rawResponse: raw }; }
-        if (res.statusCode >= 200 && res.statusCode < 300 && parsed.access_token) {
-          resolve(parsed.access_token);
-        } else {
-          reject({ status: res.statusCode, body: parsed });
-        }
-      });
-    });
-    req.on('error', (err) => reject({ status: 0, body: { message: err.message } }));
-    req.write(body);
-    req.end();
-  });
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -135,11 +48,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const agent = buildAgent();
-
   try {
-    const token = await obterToken(agent);
-    const authHeaders = { Authorization: `Bearer ${token}` };
+    const { agent, authHeaders } = await autenticar();
 
     let resultado;
 
@@ -201,6 +111,12 @@ export default async function handler(req, res) {
         headers: authHeaders,
         agent,
       });
+      resultado = { sucesso: true };
+    } else if (action === 'configurar_webhook') {
+      // Registra a URL do webhook de cobranças no Inter — precisa ser
+      // chamado uma vez (ou de novo se o domínio mudar). Ver
+      // api/inter-webhook.js pra quem recebe os avisos.
+      await configurarWebhookCobranca(payload.webhookUrl);
       resultado = { sucesso: true };
     } else {
       res.status(400).json({ error: `Ação desconhecida: ${action}` });
