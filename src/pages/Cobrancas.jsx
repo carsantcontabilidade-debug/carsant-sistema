@@ -229,7 +229,27 @@ export default function Cobrancas() {
       // já aparece lá também. Endereço/regime/obrigações ficam em
       // branco, completáveis depois se precisar (ex: pra emitir NFS-e).
       setClientes(atual => [...atual, novoCliente].sort((a, b) => a.nome.localeCompare(b.nome)));
-      onChangeCliente(novoCliente.id);
+
+      // Não usa onChangeCliente(novoCliente.id) aqui: ele procura o
+      // cliente dentro do array `clientes` do estado, que ainda não foi
+      // atualizado nesta mesma execução (setClientes é assíncrono) —
+      // isso deixava clienteForm como null mesmo com o cliente
+      // aparecendo selecionado no <select>, e quebrava a emissão da
+      // cobrança ("Cannot read properties of null"). Preenche direto
+      // com o objeto que acabou de voltar do insert.
+      setClienteForm(novoCliente);
+      const hoje = new Date();
+      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth(), novoCliente.dia_vencimento || 10);
+      if (vencimento < hoje) vencimento.setMonth(vencimento.getMonth() + 1);
+      const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+      setForm(f => ({
+        ...f,
+        cliente_id: novoCliente.id,
+        descricao: f.descricao || `Honorários Contábeis — ${mesRef.replace("-", "/")}`,
+        valor: f.valor || (novoCliente.valor_honorario ? String(novoCliente.valor_honorario) : ""),
+        vencimento: f.vencimento || vencimento.toISOString().split("T")[0],
+        mes_referencia: f.mes_referencia || mesRef,
+      }));
       setMostrarNovoCliente(false);
       setSucesso(`Cliente "${novoCliente.nome}" cadastrado.`);
     } catch (err) {
