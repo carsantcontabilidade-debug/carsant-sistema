@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
+import { buscarNomeMunicipio } from "../lib/geoBrasil";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -113,11 +114,15 @@ export default function Cobrancas() {
 
   // Cadastro rápido de cliente novo, direto do formulário de cobrança —
   // grava na mesma tabela `clientes` usada em Clientes.jsx (não é um
-  // registro à parte), só com os campos essenciais pra já gerar a
-  // cobrança. Endereço/obrigações etc. ficam pra completar depois em
-  // Clientes.jsx, se precisar (ex: pra emitir NFS-e).
+  // registro à parte). Inclui endereço porque tanto a cobrança no Banco
+  // Inter quanto a NFS-e (Emitir NFS-e junto) precisam dele — sem isso o
+  // pagador ia sempre com o endereço genérico da CARSANT (bug corrigido
+  // em 25/08/2026). Obrigações fiscais etc. continuam só em Clientes.jsx.
   const [mostrarNovoCliente, setMostrarNovoCliente] = useState(false);
-  const [novoClienteForm, setNovoClienteForm] = useState({ nome: "", cnpj: "", valor_honorario: "", dia_vencimento: "10", telefone: "", email: "" });
+  const [novoClienteForm, setNovoClienteForm] = useState({
+    nome: "", cnpj: "", valor_honorario: "", dia_vencimento: "10", telefone: "", email: "",
+    logradouro: "", numero_endereco: "", complemento: "", bairro: "", cep: "", uf: "BA", codigo_municipio_ibge: "2910800",
+  });
   const [criandoCliente, setCriandoCliente] = useState(false);
 
   // Lote
@@ -202,7 +207,10 @@ export default function Cobrancas() {
   }
 
   function abrirNovoClienteRapido() {
-    setNovoClienteForm({ nome: "", cnpj: "", valor_honorario: form.valor || "", dia_vencimento: "10", telefone: "", email: "" });
+    setNovoClienteForm({
+      nome: "", cnpj: "", valor_honorario: form.valor || "", dia_vencimento: "10", telefone: "", email: "",
+      logradouro: "", numero_endereco: "", complemento: "", bairro: "", cep: "", uf: "BA", codigo_municipio_ibge: "2910800",
+    });
     setMostrarNovoCliente(true);
   }
 
@@ -222,12 +230,18 @@ export default function Cobrancas() {
         telefone: novoClienteForm.telefone.trim() || null,
         email: novoClienteForm.email.trim() || null,
         tipo: "recorrente",
+        logradouro: novoClienteForm.logradouro.trim() || null,
+        numero_endereco: novoClienteForm.numero_endereco.trim() || null,
+        complemento: novoClienteForm.complemento.trim() || null,
+        bairro: novoClienteForm.bairro.trim() || null,
+        cep: novoClienteForm.cep.trim() || null,
+        uf: novoClienteForm.uf.trim() || null,
+        codigo_municipio_ibge: novoClienteForm.codigo_municipio_ibge.trim() || null,
       }).select().single();
       if (error) throw error;
 
       // Mesma tabela usada em Clientes.jsx — não é um cadastro à parte,
-      // já aparece lá também. Endereço/regime/obrigações ficam em
-      // branco, completáveis depois se precisar (ex: pra emitir NFS-e).
+      // já aparece lá também.
       setClientes(atual => [...atual, novoCliente].sort((a, b) => a.nome.localeCompare(b.nome)));
 
       // Não usa onChangeCliente(novoCliente.id) aqui: ele procura o
@@ -275,18 +289,32 @@ export default function Cobrancas() {
     if (errSalvar) throw new Error(errSalvar.message);
 
     // 2. Chamar Edge Function para gerar no Banco Inter
+    const documentoLimpo = cliente?.cnpj?.replace(/\D/g, "") || "";
+    const nomeMunicipioCliente = cliente?.codigo_municipio_ibge
+      ? await buscarNomeMunicipio(cliente.codigo_municipio_ibge).catch(() => "Feira de Santana")
+      : "Feira de Santana";
     const payloadInter = {
       pagador: {
-        cpfCnpj: cliente?.cnpj?.replace(/\D/g, "") || "00000000000000",
-        tipoPessoa: "JURIDICA",
+        // O campo "cnpj" do cliente aceita CPF ou CNPJ (placeholder "CPF/CNPJ") —
+        // o Inter valida o tamanho do documento contra o tipoPessoa informado,
+        // então precisa detectar pelo número de dígitos (11 = CPF, 14 = CNPJ),
+        // nunca assumir JURIDICA fixo (causava "Invalid billing" pra clientes
+        // cadastrados com CPF).
+        cpfCnpj: documentoLimpo || "00000000000000",
+        tipoPessoa: documentoLimpo.length === 11 ? "FISICA" : "JURIDICA",
         nome: cliente?.nome,
         email: cliente?.["email"] || cliente?.email2 || "",
-        endereco: "Feira de Santana",
-        cidade: "Feira de Santana",
-        uf: "BA",
-        cep: "44000000",
-        numero: "S/N",
-        bairro: "Centro",
+        // Antes ia sempre um endereço fixo da CARSANT (Feira de Santana,
+        // S/N, Centro) pra QUALQUER cliente — nunca usava o endereço real
+        // cadastrado. Corrigido em 25/08/2026: usa o endereço do cliente
+        // quando existe, só cai no padrão da CARSANT se o cliente ainda
+        // não tiver endereço cadastrado (clientes antigos).
+        endereco: cliente?.logradouro || "Feira de Santana",
+        cidade: nomeMunicipioCliente,
+        uf: cliente?.uf || "BA",
+        cep: cliente?.cep?.replace(/\D/g, "") || "44000000",
+        numero: cliente?.numero_endereco || "S/N",
+        bairro: cliente?.bairro || "Centro",
       },
       mensagem: { linha1: descricao, linha2: "CARSANT Contabilidade", linha3: "Feira de Santana, BA" },
       dataVencimento: vencimento,
@@ -1144,7 +1172,31 @@ export default function Cobrancas() {
                         <input type="email" value={novoClienteForm.email} onChange={e => setNovoClienteForm(f => ({ ...f, email: e.target.value }))}
                           placeholder="E-mail"
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <p className="text-xs text-gray-500">Endereço e outros dados podem ser completados depois em Clientes (necessário pra emitir NFS-e).</p>
+
+                        <p className="text-xs text-gray-500 font-medium pt-1">Endereço (usado na cobrança do Inter e na NFS-e)</p>
+                        <input type="text" value={novoClienteForm.logradouro} onChange={e => setNovoClienteForm(f => ({ ...f, logradouro: e.target.value }))}
+                          placeholder="Logradouro (rua/avenida)"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input type="text" value={novoClienteForm.numero_endereco} onChange={e => setNovoClienteForm(f => ({ ...f, numero_endereco: e.target.value }))}
+                            placeholder="Número"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="text" value={novoClienteForm.complemento} onChange={e => setNovoClienteForm(f => ({ ...f, complemento: e.target.value }))}
+                            placeholder="Complemento"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="text" value={novoClienteForm.bairro} onChange={e => setNovoClienteForm(f => ({ ...f, bairro: e.target.value }))}
+                            placeholder="Bairro"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="text" value={novoClienteForm.cep} onChange={e => setNovoClienteForm(f => ({ ...f, cep: e.target.value }))}
+                            placeholder="CEP"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="text" maxLength={2} value={novoClienteForm.uf} onChange={e => setNovoClienteForm(f => ({ ...f, uf: e.target.value.toUpperCase() }))}
+                            placeholder="UF"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <p className="text-xs text-gray-500">Cidade pré-marcada como Feira de Santana/BA. Se o cliente for de outra cidade, corrija depois em Clientes usando "Buscar automaticamente" (ou edite manualmente lá).</p>
                         <div className="flex gap-2 pt-1">
                           <button type="button" onClick={criarClienteRapido} disabled={criandoCliente}
                             className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">
