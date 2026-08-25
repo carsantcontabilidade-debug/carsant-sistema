@@ -8,6 +8,19 @@ import https from 'https';
 
 const INTER_BASE_URL = 'cdpj.partners.bancointer.com.br';
 
+// SituacaoCobrancaEnum real da API do Inter (confirmado na referência
+// oficial developers.inter.co/references/cobranca-bolepix em 20/08/2026):
+// "RECEBIDO" "A_RECEBER" "MARCADO_RECEBIDO" "ATRASADO" "CANCELADO"
+// "EXPIRADO" "FALHA_EMISSAO" "EM_PROCESSAMENTO" "PROTESTO". Mesmo
+// mapeamento usado em src/pages/Cobrancas.jsx (duplicado ali por não
+// dar pra importar um arquivo de api/ no código do navegador).
+export function mapearSituacaoInter(situacao) {
+  if (situacao === 'RECEBIDO' || situacao === 'MARCADO_RECEBIDO') return 'paga';
+  if (situacao === 'CANCELADO') return 'cancelada';
+  if (situacao === 'ATRASADO') return 'vencida';
+  return 'gerada';
+}
+
 export function buildAgent() {
   return new https.Agent({
     cert: process.env.INTER_CERT_PEM,

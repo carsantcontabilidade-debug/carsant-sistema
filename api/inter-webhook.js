@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { consultarCobrancaReal } from './_inter.js';
+import { consultarCobrancaReal, mapearSituacaoInter } from './_inter.js';
 
 // Recebe os avisos (callbacks) que o Inter manda quando o status de uma
 // cobrança muda (ex.: cliente pagou o boleto/Pix).
@@ -21,20 +21,36 @@ import { consultarCobrancaReal } from './_inter.js';
 // é uma consulta extra sem efeito nenhum — nunca escreve nada sem
 // confirmar direto com o Inter primeiro.
 //
-// O formato exato do payload que o Inter envia não foi confirmado num
-// caso real ainda (documentação não disponibilizou um exemplo) — tenta
-// vários nomes de campo plausíveis pro identificador da cobrança; se o
-// primeiro aviso real vier diferente, ajustar aqui.
+// Formato do payload confirmado na referência oficial
+// (developers.inter.co/references/cobranca-bolepix#tag/Webhook, seção
+// "Callback payload samples"): o Inter manda uma LISTA de objetos, não
+// um objeto único — ex.: [{ codigoSolicitacao, seuNumero, situacao, ... }].
+// Um único POST pode trazer avisos de mais de uma cobrança de uma vez.
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-function extrairCodigoSolicitacao(body) {
-  return body?.codigoSolicitacao
-    || body?.cobranca?.codigoSolicitacao
-    || body?.seuNumero
-    || body?.cobranca?.seuNumero
-    || null;
+async function processarAviso(admin, aviso) {
+  const codigoSolicitacao = aviso?.codigoSolicitacao;
+  if (!codigoSolicitacao) return;
+
+  const { data: cobranca } = await admin
+    .from('cobrancas')
+    .select('id, status')
+    .eq('codigo_solicitacao', codigoSolicitacao)
+    .maybeSingle();
+  if (!cobranca) return;
+
+  const resultado = await consultarCobrancaReal(codigoSolicitacao);
+  const novoStatus = mapearSituacaoInter(resultado.situacao);
+  if (novoStatus === cobranca.status) return;
+
+  const payloadAtualizacao = {
+    status: novoStatus,
+    paga_em: novoStatus === 'paga' ? new Date().toISOString() : null,
+  };
+  if (novoStatus === 'paga') payloadAtualizacao.forma_pagamento = 'inter';
+  await admin.from('cobrancas').update(payloadAtualizacao).eq('id', cobranca.id);
 }
 
 export default async function handler(req, res) {
@@ -44,41 +60,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = req.body || {};
-    const codigoSolicitacao = extrairCodigoSolicitacao(body);
-    if (!codigoSolicitacao) {
-      console.warn('Webhook Inter: payload sem identificador reconhecido:', JSON.stringify(body));
-      res.status(200).json({ ignorado: true });
-      return;
-    }
+    const body = req.body;
+    // Aceita tanto a lista (formato confirmado) quanto um objeto único,
+    // por segurança — caso algum produto novo do Inter ainda mande no
+    // formato antigo.
+    const avisos = Array.isArray(body) ? body : (body ? [body] : []);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: cobranca } = await admin
-      .from('cobrancas')
-      .select('id, status')
-      .eq('codigo_solicitacao', codigoSolicitacao)
-      .maybeSingle();
-    if (!cobranca) {
-      res.status(200).json({ ignorado: true });
-      return;
+    for (const aviso of avisos) {
+      await processarAviso(admin, aviso);
     }
 
-    const resultado = await consultarCobrancaReal(codigoSolicitacao);
-    const novoStatus = resultado.situacao === 'PAGO' ? 'paga'
-      : resultado.situacao === 'CANCELADO' ? 'cancelada'
-      : resultado.situacao === 'VENCIDO' ? 'vencida'
-      : 'gerada';
-
-    if (novoStatus !== cobranca.status) {
-      const payloadAtualizacao = {
-        status: novoStatus,
-        paga_em: novoStatus === 'paga' ? new Date().toISOString() : null,
-      };
-      if (novoStatus === 'paga') payloadAtualizacao.forma_pagamento = 'inter';
-      await admin.from('cobrancas').update(payloadAtualizacao).eq('id', cobranca.id);
-    }
-
-    res.status(200).json({ ok: true });
+    res.status(200).json({ ok: true, processados: avisos.length });
   } catch (err) {
     // Responde 200 mesmo em erro nosso pro Inter não ficar reenviando
     // indefinidamente por causa de uma falha do nosso lado — o erro

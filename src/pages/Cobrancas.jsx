@@ -15,6 +15,20 @@ const STATUS_INFO = {
   erro:      { label: "Erro",       cor: "bg-red-100 text-red-600" },
 };
 
+// SituacaoCobrancaEnum real da API do Inter (confirmado na referência
+// oficial developers.inter.co/references/cobranca-bolepix em 20/08/2026):
+// "RECEBIDO" "A_RECEBER" "MARCADO_RECEBIDO" "ATRASADO" "CANCELADO"
+// "EXPIRADO" "FALHA_EMISSAO" "EM_PROCESSAMENTO" "PROTESTO" — o código
+// aqui checava "PAGO" e "VENCIDO", que não existem nesse enum (bug
+// antigo: "Atualizar status" nunca marcava nada como pago de verdade,
+// mesmo quando a cobrança já tinha sido paga no banco).
+function mapearSituacaoInter(situacao) {
+  if (situacao === "RECEBIDO" || situacao === "MARCADO_RECEBIDO") return "paga";
+  if (situacao === "CANCELADO") return "cancelada";
+  if (situacao === "ATRASADO") return "vencida";
+  return "gerada";
+}
+
 // Cobranças com status "paga" via atualizarStatus() (confirmação real
 // do Inter) sempre recebem forma_pagamento="inter" — qualquer outro
 // valor aqui só pode ter vindo de uma baixa manual (darBaixaManual()).
@@ -434,18 +448,15 @@ export default function Cobrancas() {
       const resultado = await chamarEdgeFunction("consultar_cobranca", {
         codigoSolicitacao: cobranca.codigo_solicitacao,
       });
-      const novoStatus = resultado.situacao === "PAGO" ? "paga"
-        : resultado.situacao === "CANCELADO" ? "cancelada"
-        : resultado.situacao === "VENCIDO" ? "vencida"
-        : "gerada";
+      const novoStatus = mapearSituacaoInter(resultado.situacao);
       const payloadAtualizacao = {
         status: novoStatus,
-        paga_em: resultado.situacao === "PAGO" ? new Date().toISOString() : null,
+        paga_em: novoStatus === "paga" ? new Date().toISOString() : null,
         codigo_barras: resultado.codigoBarras || cobranca.codigo_barras,
         linha_digitavel: resultado.linhaDigitavel || cobranca.linha_digitavel,
         pix_copia_cola: resultado.pixCopiaECola || cobranca.pix_copia_cola,
       };
-      if (resultado.situacao === "PAGO") payloadAtualizacao.forma_pagamento = "inter";
+      if (novoStatus === "paga") payloadAtualizacao.forma_pagamento = "inter";
       const { error: errAtualizar } = await supabase.from("cobrancas").update(payloadAtualizacao).eq("id", cobranca.id);
       if (errAtualizar) throw new Error(errAtualizar.message);
       carregarCobrancas();
