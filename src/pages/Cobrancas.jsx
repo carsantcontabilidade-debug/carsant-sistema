@@ -150,7 +150,10 @@ export default function Cobrancas() {
     setLoadingCobrancas(true);
     let query = supabase
       .from("cobrancas")
-      .select("*, clientes(nome, telefone, email), profiles(nome)")
+      // Precisa dos campos de cnpj/endereço aqui (não só nome/telefone/email)
+      // pra "Tentar novamente no Inter" conseguir remontar o payload do
+      // pagador igual ao usado na criação original.
+      .select("*, clientes(nome, telefone, email, cnpj, logradouro, numero_endereco, bairro, cep, uf, codigo_municipio_ibge), profiles(nome)")
       .order("created_at", { ascending: false })
       .limit(200);
     if (clienteSelecionado) query = query.eq("cliente_id", clienteSelecionado.id);
@@ -288,7 +291,16 @@ export default function Cobrancas() {
 
     if (errSalvar) throw new Error(errSalvar.message);
 
-    // 2. Chamar Edge Function para gerar no Banco Inter
+    return gerarNoInterParaCobrancaSalva(cliente, cobSalva, { descricao, valor, vencimento });
+  }
+
+  // Chama o Inter pra uma cobrança que JÁ está salva no banco (status
+  // "pendente") — usada tanto logo após criar (criarCobrancaParaCliente)
+  // quanto pra tentar de novo uma cobrança que ficou travada em "pendente"
+  // porque a primeira tentativa falhou no Inter (ex.: "Invalid billing").
+  // Nesse segundo caso NÃO cria uma linha nova, só reusa a existente —
+  // senão duplicava o registro a cada tentativa.
+  async function gerarNoInterParaCobrancaSalva(cliente, cobSalva, { descricao, valor, vencimento }) {
     const documentoLimpo = cliente?.cnpj?.replace(/\D/g, "") || "";
     const nomeMunicipioCliente = cliente?.codigo_municipio_ibge
       ? await buscarNomeMunicipio(cliente.codigo_municipio_ibge).catch(() => "Feira de Santana")
@@ -559,6 +571,28 @@ export default function Cobrancas() {
       setSucesso("Status atualizado!");
     } catch (e) {
       setErro(`Erro ao atualizar: ${e.message}`);
+    }
+    setProcessando(false);
+  }
+
+  // Cobrança que ficou travada em "pendente" (sem codigo_solicitacao)
+  // porque a tentativa de gerar no Inter falhou (ex.: "Invalid billing").
+  // Reusa o mesmo registro em vez de criar outro.
+  async function tentarNovamenteCobranca(cobranca) {
+    setProcessando(true);
+    setErro("");
+    setSucesso("");
+    try {
+      const cobrancaAtualizada = await gerarNoInterParaCobrancaSalva(cobranca.clientes, cobranca, {
+        descricao: cobranca.descricao,
+        valor: cobranca.valor,
+        vencimento: cobranca.vencimento,
+      });
+      setSucesso("Cobrança gerada no Banco Inter!");
+      carregarCobrancas();
+      setCobrancaAtual(cobrancaAtualizada);
+    } catch (e) {
+      setErro(`Erro ao gerar no Inter: ${e.message}`);
     }
     setProcessando(false);
   }
@@ -1030,6 +1064,11 @@ export default function Cobrancas() {
                   {cobrancaAtual.codigo_solicitacao && ["gerada", "vencida"].includes(cobrancaAtual.status) && (
                     <button onClick={() => atualizarStatus(cobrancaAtual)} disabled={processando} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 disabled:opacity-50">
                       🔄 Atualizar status
+                    </button>
+                  )}
+                  {!cobrancaAtual.codigo_solicitacao && cobrancaAtual.status === "pendente" && (
+                    <button onClick={() => tentarNovamenteCobranca(cobrancaAtual)} disabled={processando} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                      🏦 {processando ? "Gerando..." : "Tentar novamente no Inter"}
                     </button>
                   )}
                   {STATUS_PENDENTES_DE_BAIXA.includes(cobrancaAtual.status) && (
