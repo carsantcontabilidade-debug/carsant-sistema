@@ -733,7 +733,12 @@ export default function Cobrancas() {
     try {
       const pdfBase64 = await buscarPdfBase64(cob);
       if (!pdfBase64) throw new Error("PDF não disponível para esta cobrança.");
-      window.open(`data:application/pdf;base64,${pdfBase64}`, "_blank");
+      // Navegadores recentes (Chrome) bloqueiam abrir uma data: URL direto
+      // em nova aba ("Não é possível acessar esse site") — precisa virar
+      // Blob + URL de objeto, que não tem essa restrição.
+      const blob = new Blob([base64ParaBytes(pdfBase64)], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
     } catch (e) {
       setErro(`Erro ao abrir boleto: ${e.message}`);
     }
