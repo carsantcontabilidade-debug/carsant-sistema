@@ -701,30 +701,40 @@ export default function Cobrancas() {
     return bytes;
   }
 
+  // Link curto pelo nosso próprio domínio (alias fixo, não muda a cada
+  // deploy) em vez da URL crua do Supabase Storage — o endereço
+  // "ngdqevczhfotzwdcxfrm.supabase.co" que ia antes pro cliente no
+  // WhatsApp parecia estranho/suspeito. `/boleto/:path*` é um rewrite em
+  // vercel.json que aponta pro mesmo arquivo no Storage, sem gastar uma
+  // function nova (o plano Vercel Hobby já está no limite de 12).
+  function linkCurtoBoleto(caminho) {
+    return `https://carsant-sistema.vercel.app/boleto/${caminho}`;
+  }
+
   async function garantirLinkBoleto(cob) {
-    // Se já existe um link salvo, reaproveita (evita novo upload a cada envio).
-    if (cob.link_boleto) return cob.link_boleto;
+    const caminho = `${cob.codigo_solicitacao}.pdf`;
+    // Se já foi enviado antes, o PDF já está no Storage — só recalcula o
+    // link no formato novo (cobre também cobranças enviadas antes desta
+    // mudança, cujo link_boleto salvo ainda é a URL crua antiga).
+    if (cob.link_boleto) return linkCurtoBoleto(caminho);
+
     const pdfBase64 = await buscarPdfBase64(cob);
     if (!pdfBase64) return null;
 
-    const caminho = `${cob.codigo_solicitacao}.pdf`;
     const bytes = base64ParaBytes(pdfBase64);
     const { error: erroUpload } = await supabase.storage
       .from("boletos")
       .upload(caminho, bytes, { contentType: "application/pdf", upsert: true });
     if (erroUpload) throw new Error(erroUpload.message);
 
-    const { data } = supabase.storage.from("boletos").getPublicUrl(caminho);
-    const url = data?.publicUrl;
-    if (url) {
-      const { error: errSalvarLink } = await supabase.from("cobrancas").update({ link_boleto: url }).eq("id", cob.id);
-      if (errSalvarLink) {
-        // Não bloqueia o envio (a URL já foi gerada e é válida) — só não fica
-        // em cache para a próxima vez, gerando novo upload então.
-        console.warn("Não foi possível salvar o link do boleto em cache:", errSalvarLink.message);
-      }
+    const url = linkCurtoBoleto(caminho);
+    const { error: errSalvarLink } = await supabase.from("cobrancas").update({ link_boleto: url }).eq("id", cob.id);
+    if (errSalvarLink) {
+      // Não bloqueia o envio (a URL já foi gerada e é válida) — só não fica
+      // em cache para a próxima vez, gerando novo upload então.
+      console.warn("Não foi possível salvar o link do boleto em cache:", errSalvarLink.message);
     }
-    return url || null;
+    return url;
   }
 
   async function verBoleto(cob) {
@@ -771,8 +781,18 @@ export default function Cobrancas() {
     const email = cob.clientes?.["email"] || "";
     if (!email) throw new Error("Cliente sem e-mail cadastrado.");
     const notaFiscal = await buscarNotaFiscalDaCobranca(cob.id);
+    // Igual ao WhatsApp: garante o link (curto, pelo nosso domínio) em vez
+    // de só ler cob.link_boleto direto — que tanto podia estar vazio
+    // (nunca enviado por WhatsApp antes) quanto, em cobranças antigas,
+    // guardar a URL crua do Supabase Storage.
+    let linkBoleto = cob.link_boleto;
+    try {
+      linkBoleto = await garantirLinkBoleto(cob);
+    } catch (e) {
+      console.warn("Não foi possível gerar o link do boleto para o e-mail:", e.message);
+    }
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
-    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${cob.link_boleto ? `Boleto para visualização/impressão:\n${cob.link_boleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\nCódigo de verificação: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto para visualização/impressão:\n${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\nCódigo de verificação: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
 
     // QR Code gerado a partir do próprio texto do Pix (o Inter só devolve o
     // copia-e-cola, não uma imagem pronta) — não altera nada no código, só
@@ -796,7 +816,7 @@ export default function Cobrancas() {
       `<p><strong>Valor:</strong> ${escapeHtml(formatarValor(cob.valor))}<br><strong>Vencimento:</strong> ${escapeHtml(formatarData(cob.vencimento))}</p>` +
       (qrCodeBase64 ? `<p><strong>Pague com Pix (aponte a câmera do banco):</strong><br><img src="cid:pixqrcode" alt="QR Code Pix" width="200" height="200" /></p>` : "") +
       (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${htmlSemLinkAutomatico(cob.pix_copia_cola)}</code></p>` : "") +
-      (cob.link_boleto ? `<p><a href="${cob.link_boleto}">Boleto para visualização/impressão</a></p>` : "") +
+      (linkBoleto ? `<p><a href="${linkBoleto}">Boleto para visualização/impressão</a></p>` : "") +
       (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>Código de verificação: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
       `<p>Em caso de dúvidas, entre em contato.</p>` +
       `<p>Atenciosamente,<br>Equipe CARSANT Contabilidade<br>Feira de Santana, BA</p>` +

@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/boleto/:path*", "destination": "https://ngdqevczhfotzwdcxfrm.supabase.co/storage/v1/object/public/boletos/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
