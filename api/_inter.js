@@ -54,6 +54,8 @@ export function interRequest({ path, method = 'GET', body, headers = {}, agent }
   });
 }
 
+// Retorna { accessToken, expiresIn } — expiresIn em segundos, conforme
+// devolvido pelo Inter (geralmente 900s = 15min pra client_credentials).
 export async function obterToken(agent) {
   const params = new URLSearchParams({
     client_id: process.env.INTER_CLIENT_ID,
@@ -79,10 +81,15 @@ export async function obterToken(agent) {
       res.on('data', (c) => (raw += c));
       res.on('end', () => {
         let parsed;
-        try { parsed = JSON.parse(raw); } catch (e) { parsed = { rawResponse: raw }; }
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch (e) { parsed = { rawResponse: raw }; }
         if (res.statusCode >= 200 && res.statusCode < 300 && parsed.access_token) {
-          resolve(parsed.access_token);
+          resolve({ accessToken: parsed.access_token, expiresIn: parsed.expires_in || 900 });
         } else {
+          // Resposta vazia/sem token do Inter costuma acontecer quando
+          // várias chamadas pedem token novo em sequência rápida demais
+          // (rate limit da autenticação) — cachear o token (abaixo)
+          // reduz bastante isso, já que passa a pedir um novo só quando
+          // o anterior expira de verdade.
           reject({ status: res.statusCode, body: parsed });
         }
       });
@@ -93,12 +100,24 @@ export async function obterToken(agent) {
   });
 }
 
+// Cache do token em memória do processo — sobrevive entre chamadas
+// dentro da mesma instância "quente" da função serverless (não entre
+// cold starts, mas evita pedir token novo a cada clique/webhook em
+// sequência, que é justamente o que dispara o rate limit do Inter).
+let tokenCache = null; // { accessToken, expiraEm (epoch ms) }
+const AGENT_UNICO = buildAgent();
+const MARGEM_SEGURANCA_MS = 30_000; // renova 30s antes de expirar de verdade
+
 // Autentica e devolve { agent, authHeaders } prontos pra usar em
 // chamadas subsequentes com interRequest().
 export async function autenticar() {
-  const agent = buildAgent();
-  const token = await obterToken(agent);
-  return { agent, authHeaders: { Authorization: `Bearer ${token}` } };
+  const agora = Date.now();
+  if (tokenCache && tokenCache.expiraEm > agora) {
+    return { agent: AGENT_UNICO, authHeaders: { Authorization: `Bearer ${tokenCache.accessToken}` } };
+  }
+  const { accessToken, expiresIn } = await obterToken(AGENT_UNICO);
+  tokenCache = { accessToken, expiraEm: agora + expiresIn * 1000 - MARGEM_SEGURANCA_MS };
+  return { agent: AGENT_UNICO, authHeaders: { Authorization: `Bearer ${accessToken}` } };
 }
 
 // Consulta o status REAL de uma cobrança direto no Inter — usado tanto
