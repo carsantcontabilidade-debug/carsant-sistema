@@ -18,6 +18,8 @@
 // nfse-emitir.js.
 
 import JSZip from 'jszip';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
 
 const PORTAL_BASE = 'https://feiradesantanaba.webiss.com.br';
 const ID_AUTORIZACAO_CARSANT = process.env.WEBISS_PORTAL_ID_AUTORIZACAO_CARSANT || '95641';
@@ -149,29 +151,56 @@ async function buscarIdInternoDaNota(jar, numeroNfse) {
   return linha[linha.length - 1];
 }
 
-// Retorna o HTML da página de visualização oficial de uma nota — a MESMA
-// que abre quando alguém clica em "Visualizar" na listagem do portal e
-// manda imprimir de lá (confirmado abrindo essa URL manualmente em
-// 26/08/2026: o título da aba bate exatamente com o de um DANFSE aberto
-// direto no site). É DIFERENTE do PDF de "Exportar Lote" usado em
-// baixarDanfseOficialPdf acima — aquele usa um layout de página mais
-// largo que corta informação ao imprimir (relatado pelo Ronaldo);
-// este é HTML normal com CSS de impressão (@media print) que a própria
-// Prefeitura já testa e usa, então imprime certo.
-export async function buscarHtmlNfseOficial(numeroNfse) {
+// Converte o jar de cookies (usado nas chamadas fetch acima) pro formato
+// que o Puppeteer espera em page.setCookie() — necessário pro Chromium
+// headless carregar como um usuário LOGADO de verdade. Sem isso, a imagem
+// do selo fiscal/QR Code (endpoint autenticado
+// /gerador-de-selo-fiscal/...) não carregaria dentro do PDF renderizado.
+function cookiesParaPuppeteer(jar) {
+  return Array.from(jar.values()).map((par) => {
+    const igual = par.indexOf('=');
+    return {
+      name: par.slice(0, igual),
+      value: par.slice(igual + 1),
+      domain: 'feiradesantanaba.webiss.com.br',
+      path: '/',
+    };
+  });
+}
+
+// Gera o PDF oficial de verdade, renderizando a MESMA página de
+// visualização que abre quando alguém clica em "Visualizar" na listagem
+// do portal e manda imprimir de lá — mas com um navegador headless real
+// (Chromium), não uma captura de tela via JS. Isso importa porque essa
+// página só fica no layout A4 correto quando o CSS de impressão
+// (`@media print`) é de fato aplicado, o que só um motor de impressão de
+// navegador de verdade faz corretamente (confirmado em 26/08/2026: tentar
+// simular isso via html2canvas + redimensionar o container não funciona —
+// a tabela não é responsiva e o selo fiscal/QR Code fica fora da área
+// capturada). É DIFERENTE do PDF de "Exportar Lote" usado em
+// baixarDanfseOficialPdf acima, que usa um layout de página mais largo e
+// corta informação (relatado pelo Ronaldo).
+export async function buscarPdfNfseOficialViaRenderizacao(numeroNfse) {
   const jar = await loginPortal();
   await trocarParaAutorizacaoCarsant(jar);
-
   const idInterno = await buscarIdInternoDaNota(jar, numeroNfse);
 
-  const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, {
-    headers: { Cookie: cookieHeader(jar) },
+  const browser = await puppeteer.launch({
+    args: await puppeteer.defaultArgs({ args: chromium.args, headless: 'shell' }),
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: 'shell',
   });
-  if (!resp.ok) throw new Error(`Falha ao abrir a nota no portal WebISS (status ${resp.status}).`);
-  const html = await resp.text();
 
-  // <base> pra CSS/imagens relativas da própria página (ex: /Content/css/...)
-  // continuarem carregando quando esse HTML for aberto fora do domínio do
-  // WebISS (nosso sistema só reaproveita o documento, não hospeda os assets).
-  return html.replace(/<head>/i, `<head><base href="${PORTAL_BASE}/">`);
+  try {
+    const page = await browser.newPage();
+    await page.setCookie(...cookiesParaPuppeteer(jar));
+    const resp = await page.goto(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, { waitUntil: 'networkidle0' });
+    if (!resp || !resp.ok()) throw new Error(`Falha ao abrir a nota no portal WebISS (status ${resp?.status()}).`);
+    await page.emulateMediaType('print');
+    const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
+    return { pdfBase64: Buffer.from(pdfBuffer).toString('base64'), nomeArquivo: `DANFSe-${numeroNfse}.pdf` };
+  } finally {
+    await browser.close();
+  }
 }

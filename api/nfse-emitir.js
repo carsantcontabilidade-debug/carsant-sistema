@@ -4,7 +4,7 @@ import {
   montarCancelarNfseEnvio, enviarCancelarNfse,
   montarSubstituirNfseEnvio, enviarSubstituirNfse,
 } from './_webiss-nfse.js';
-import { baixarDanfseOficialPdf, buscarHtmlNfseOficial } from './_webiss-portal.js';
+import { baixarDanfseOficialPdf, buscarPdfNfseOficialViaRenderizacao } from './_webiss-portal.js';
 
 // Emite/cancela/substitui uma NFS-e via WebISS. Só um gestor autenticado
 // pode chamar. Dispatcha por req.body.acao ('emitir' por padrão, 'cancelar'
@@ -48,7 +48,6 @@ export default async function handler(req, res) {
   if (acao === 'cancelar') return cancelarNota(admin, req, res);
   if (acao === 'substituir') return substituirNota(admin, req, res, userData.user.id);
   if (acao === 'baixarDanfseOficial') return baixarDanfseOficial(admin, req, res);
-  if (acao === 'visualizarDanfseOficial') return visualizarDanfseOficial(admin, req, res);
   return emitirNota(admin, req, res, userData.user.id);
 }
 
@@ -70,29 +69,22 @@ async function baixarDanfseOficial(admin, req, res) {
   if (erro) return res.status(erro.status).json({ error: erro.mensagem });
 
   try {
-    const { pdfBase64, nomeArquivo } = await baixarDanfseOficialPdf(nota.numero_nfse);
+    // Renderiza a página de visualização oficial com um Chromium headless
+    // de verdade (respeita o CSS de impressão, não corta nada) — ver
+    // buscarPdfNfseOficialViaRenderizacao em _webiss-portal.js.
+    const { pdfBase64, nomeArquivo } = await buscarPdfNfseOficialViaRenderizacao(nota.numero_nfse);
     return res.status(200).json({ success: true, pdfBase64, nomeArquivo });
-  } catch (err) {
-    return res.status(502).json({ error: err.message });
-  }
-}
-
-// Página de visualização oficial (mesma que o botão "Visualizar" do
-// portal WebISS abre) — ao contrário do "Exportar Lote PDF" acima, essa
-// imprime certo (não corta informação), porque é HTML normal com CSS de
-// impressão em vez de um PDF renderizado num layout de página mais largo.
-async function visualizarDanfseOficial(admin, req, res) {
-  const { notaId } = req.body || {};
-  if (!notaId) return res.status(400).json({ error: 'Campo "notaId" é obrigatório.' });
-
-  const { nota, erro } = await buscarNotaDeProducao(admin, notaId);
-  if (erro) return res.status(erro.status).json({ error: erro.mensagem });
-
-  try {
-    const html = await buscarHtmlNfseOficial(nota.numero_nfse);
-    return res.status(200).json({ success: true, html });
-  } catch (err) {
-    return res.status(502).json({ error: err.message });
+  } catch (errRenderizacao) {
+    // Se a renderização falhar por algum motivo (ex.: Chromium indisponível
+    // no cold start), cai pro "Exportar Lote PDF" antigo — corta informação
+    // ao imprimir, mas ainda é o documento oficial, melhor que nada.
+    console.warn('Falha ao renderizar DANFSE via Chromium, usando PDF em lote:', errRenderizacao.message);
+    try {
+      const { pdfBase64, nomeArquivo } = await baixarDanfseOficialPdf(nota.numero_nfse);
+      return res.status(200).json({ success: true, pdfBase64, nomeArquivo });
+    } catch (errLote) {
+      return res.status(502).json({ error: errLote.message });
+    }
   }
 }
 
