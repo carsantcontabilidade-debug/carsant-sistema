@@ -109,14 +109,27 @@ export async function baixarDanfseOficialPdf(numeroNfse) {
 
 // Descobre o ID interno do WebISS pra uma nota (diferente do número da
 // NFS-e) — necessário pra montar a URL de visualização abaixo. Vem do
-// mesmo endpoint que alimenta a tela "Consultar NFS-e" (grid AJAX,
-// confirmado em 26/08/2026 inspecionando as chamadas reais da página);
-// cada linha devolvida termina com esse ID. Sem filtro nenhum ele já
-// devolve as notas mais recentes primeiro, então um iDisplayLength alto
-// cobre qualquer nota emitida recentemente sem precisar acertar o nome
-// exato dos campos de filtro (que não são triviais de replicar fora do
-// JS da própria página).
-async function buscarIdInternoDaNota(jar, numeroNfse) {
+// mesmo endpoint que alimenta a tela "Consultar NFS-e" (grid AJAX).
+//
+// Duas coisas nada óbvias, confirmadas testando direto contra o portal
+// em 26/08/2026:
+// 1. Sem filtro, esse endpoint devolve só as 10 notas mais recentes
+//    (ignora iDisplayLength/iDisplayStart maiores — parece um limite de
+//    segurança pra consulta "aberta"), então não dá pra confiar nele pra
+//    achar uma nota antiga varrendo página por página.
+// 2. O filtro que FUNCIONA é "NumeroDaNota" com o número COMPOSTO que a
+//    própria grade exibe (ano + sequencial com 9 dígitos, ex:
+//    "2026000000129") — o <Numero> puro devolvido pelo SOAP na emissão
+//    (ex: "129", o que fica salvo em notas_fiscais.numero_nfse) sozinho
+//    não filtra nada. Por isso essa função recebe o ano separado (tirado
+//    de notas_fiscais.data_emissao) só pra remontar esse número composto.
+async function buscarIdInternoDaNota(jar, numeroNfse, ano) {
+  const numeroComposto = `${ano}${String(numeroNfse).padStart(9, '0')}`;
+  const body = new URLSearchParams({
+    iDisplayStart: '0',
+    iDisplayLength: '10',
+    NumeroDaNota: numeroComposto,
+  });
   const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/listar/json`, {
     method: 'POST',
     headers: {
@@ -124,24 +137,12 @@ async function buscarIdInternoDaNota(jar, numeroNfse) {
       'X-Requested-With': 'XMLHttpRequest',
       Cookie: cookieHeader(jar),
     },
-    body: 'iDisplayStart=0&iDisplayLength=1000',
+    body: body.toString(),
   });
-  if (!resp.ok) throw new Error(`Falha ao consultar a lista de notas no portal WebISS (status ${resp.status}).`);
+  if (!resp.ok) throw new Error(`Falha ao consultar a nota no portal WebISS (status ${resp.status}).`);
   const { data } = await resp.json();
-  // A coluna "Número" da grade mostra o número COMPOSTO que o WebISS exibe
-  // (ano + sequencial com zeros à esquerda, ex: "2026000000151"), mas o que
-  // fica salvo em notas_fiscais.numero_nfse é o <Numero> puro devolvido
-  // pelo SOAP na emissão (ex: "151") — comparar direto nunca bate. Os 4
-  // primeiros dígitos da coluna são sempre o ano (confirmado inspecionando
-  // vários registros reais em 26/08/2026); compara só o sequencial,
-  // ignorando zeros à esquerda dos dois lados.
-  const alvo = String(numeroNfse);
-  const alvoNumerico = parseInt(numeroNfse, 10);
-  const linha = (data || []).find((l) => {
-    const numeroColuna = String(l[4]);
-    return numeroColuna === alvo || parseInt(numeroColuna.slice(4), 10) === alvoNumerico;
-  });
-  if (!linha) throw new Error(`Nota ${numeroNfse} não encontrada na lista do portal WebISS (pode não estar entre as mais recentes).`);
+  const linha = (data || [])[0];
+  if (!linha) throw new Error(`Nota ${numeroComposto} não encontrada no portal WebISS.`);
   return linha[linha.length - 1];
 }
 
@@ -154,11 +155,11 @@ async function buscarIdInternoDaNota(jar, numeroNfse) {
 // largo que corta informação ao imprimir (relatado pelo Ronaldo);
 // este é HTML normal com CSS de impressão (@media print) que a própria
 // Prefeitura já testa e usa, então imprime certo.
-export async function buscarHtmlNfseOficial(numeroNfse) {
+export async function buscarHtmlNfseOficial(numeroNfse, ano) {
   const jar = await loginPortal();
   await trocarParaAutorizacaoCarsant(jar);
 
-  const idInterno = await buscarIdInternoDaNota(jar, numeroNfse);
+  const idInterno = await buscarIdInternoDaNota(jar, numeroNfse, ano);
 
   const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, {
     headers: { Cookie: cookieHeader(jar) },
