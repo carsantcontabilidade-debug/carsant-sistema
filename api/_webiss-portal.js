@@ -128,7 +128,19 @@ async function buscarIdInternoDaNota(jar, numeroNfse) {
   });
   if (!resp.ok) throw new Error(`Falha ao consultar a lista de notas no portal WebISS (status ${resp.status}).`);
   const { data } = await resp.json();
-  const linha = (data || []).find((l) => l[4] === String(numeroNfse));
+  // A coluna "Número" da grade mostra o número COMPOSTO que o WebISS exibe
+  // (ano + sequencial com zeros à esquerda, ex: "2026000000151"), mas o que
+  // fica salvo em notas_fiscais.numero_nfse é o <Numero> puro devolvido
+  // pelo SOAP na emissão (ex: "151") — comparar direto nunca bate. Os 4
+  // primeiros dígitos da coluna são sempre o ano (confirmado inspecionando
+  // vários registros reais em 26/08/2026); compara só o sequencial,
+  // ignorando zeros à esquerda dos dois lados.
+  const alvo = String(numeroNfse);
+  const alvoNumerico = parseInt(numeroNfse, 10);
+  const linha = (data || []).find((l) => {
+    const numeroColuna = String(l[4]);
+    return numeroColuna === alvo || parseInt(numeroColuna.slice(4), 10) === alvoNumerico;
+  });
   if (!linha) throw new Error(`Nota ${numeroNfse} não encontrada na lista do portal WebISS (pode não estar entre as mais recentes).`);
   return linha[linha.length - 1];
 }
