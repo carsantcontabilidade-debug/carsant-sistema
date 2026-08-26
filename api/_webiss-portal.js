@@ -197,6 +197,15 @@ export async function buscarPdfNfseOficialViaRenderizacao(numeroNfse) {
     await page.setCookie(...cookiesParaPuppeteer(jar));
     const resp = await page.goto(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, { waitUntil: 'networkidle0' });
     if (!resp || !resp.ok()) throw new Error(`Falha ao abrir a nota no portal WebISS (status ${resp?.status()}).`);
+
+    // O portal mostra um modal de aviso (ex.: "Transferência de titularidade
+    // de Usuário Master") no primeiro carregamento de uma sessão nova —
+    // como aqui SEMPRE é um login novo (um por PDF gerado), esse aviso
+    // aparecia em TODO PDF gerado como uma página extra antes da nota
+    // (confirmado testando de verdade em 26/08/2026). Esconde qualquer
+    // modal Bootstrap antes de imprimir — não é conteúdo da nota.
+    await page.addStyleTag({ content: '.modal, .modal-backdrop { display: none !important; }' });
+
     await page.emulateMediaType('print');
     const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
     return { pdfBase64: Buffer.from(pdfBuffer).toString('base64'), nomeArquivo: `DANFSe-${numeroNfse}.pdf` };
