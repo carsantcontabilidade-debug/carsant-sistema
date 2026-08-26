@@ -290,6 +290,24 @@ export default function NfseEmitir() {
     return data.pdfBase64
   }
 
+  // Página de visualização oficial (a mesma que "Visualizar" abre dentro
+  // do portal WebISS) — ao contrário do PDF de "Exportar Lote" usado em
+  // baixarDanfseOficialBase64 acima, essa imprime certinho, sem cortar
+  // informação (relatado pelo Ronaldo em 26/08/2026: o PDF em lote usa um
+  // layout de página mais largo que a A4; a página de visualização é HTML
+  // com CSS de impressão normal, igual à Prefeitura usa/testa).
+  async function visualizarDanfseOficialHtml(notaId) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const resp = await fetch('/api/nfse-emitir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ acao: 'visualizarDanfseOficial', notaId }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.error || 'Falha ao abrir DANFSE oficial')
+    return data.html
+  }
+
   function baixarBase64ComoArquivo(base64, nomeArquivo) {
     const binario = atob(base64)
     const bytes = new Uint8Array(binario.length)
@@ -307,6 +325,17 @@ export default function NfseEmitir() {
     setBaixandoId(nota.id)
     try {
       if (nota.ambiente === 'producao' && nota.numero_nfse) {
+        // 1ª tentativa: página de visualização oficial (imprime certo).
+        try {
+          const html = await visualizarDanfseOficialHtml(nota.id)
+          const blob = new Blob([html], { type: 'text/html' })
+          window.open(URL.createObjectURL(blob), '_blank')
+          return
+        } catch (err) {
+          console.warn('Visualização oficial indisponível, tentando o PDF em lote:', err.message)
+        }
+        // 2ª tentativa: PDF de "Exportar Lote" (pode cortar informação ao
+        // imprimir, mas ainda é o documento oficial — melhor que nada).
         try {
           const base64 = await baixarDanfseOficialBase64(nota.id)
           baixarBase64ComoArquivo(base64, `DANFSe-${nota.numero_nfse}.pdf`)
@@ -716,7 +745,7 @@ export default function NfseEmitir() {
                         <button onClick={() => baixarXmlIndividual(n)} className="btn-ghost btn-sm p-1.5" title="Baixar XML">
                           <Download className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => baixarPdfIndividual(n)} disabled={baixandoId === n.id} className="btn-ghost btn-sm p-1.5" title="Baixar comprovante em PDF">
+                        <button onClick={() => baixarPdfIndividual(n)} disabled={baixandoId === n.id} className="btn-ghost btn-sm p-1.5" title="Ver / imprimir DANFSE oficial (PDF)">
                           {baixandoId === n.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
                         </button>
                         <button onClick={() => enviarPorEmail(n)} disabled={enviandoId === n.id || !n.clientes?.email} className="btn-ghost btn-sm p-1.5 text-brand-600" title="Enviar PDF + XML por e-mail">

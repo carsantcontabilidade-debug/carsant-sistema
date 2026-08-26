@@ -106,3 +106,56 @@ export async function baixarDanfseOficialPdf(numeroNfse) {
   const pdfBuffer = await arquivoPdf.async('nodebuffer');
   return { pdfBase64: pdfBuffer.toString('base64'), nomeArquivo: arquivoPdf.name };
 }
+
+// Descobre o ID interno do WebISS pra uma nota (diferente do número da
+// NFS-e) — necessário pra montar a URL de visualização abaixo. Vem do
+// mesmo endpoint que alimenta a tela "Consultar NFS-e" (grid AJAX,
+// confirmado em 26/08/2026 inspecionando as chamadas reais da página);
+// cada linha devolvida termina com esse ID. Sem filtro nenhum ele já
+// devolve as notas mais recentes primeiro, então um iDisplayLength alto
+// cobre qualquer nota emitida recentemente sem precisar acertar o nome
+// exato dos campos de filtro (que não são triviais de replicar fora do
+// JS da própria página).
+async function buscarIdInternoDaNota(jar, numeroNfse) {
+  const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/listar/json`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+      Cookie: cookieHeader(jar),
+    },
+    body: 'iDisplayStart=0&iDisplayLength=1000',
+  });
+  if (!resp.ok) throw new Error(`Falha ao consultar a lista de notas no portal WebISS (status ${resp.status}).`);
+  const { data } = await resp.json();
+  const linha = (data || []).find((l) => l[4] === String(numeroNfse));
+  if (!linha) throw new Error(`Nota ${numeroNfse} não encontrada na lista do portal WebISS (pode não estar entre as mais recentes).`);
+  return linha[linha.length - 1];
+}
+
+// Retorna o HTML da página de visualização oficial de uma nota — a MESMA
+// que abre quando alguém clica em "Visualizar" na listagem do portal e
+// manda imprimir de lá (confirmado abrindo essa URL manualmente em
+// 26/08/2026: o título da aba bate exatamente com o de um DANFSE aberto
+// direto no site). É DIFERENTE do PDF de "Exportar Lote" usado em
+// baixarDanfseOficialPdf acima — aquele usa um layout de página mais
+// largo que corta informação ao imprimir (relatado pelo Ronaldo);
+// este é HTML normal com CSS de impressão (@media print) que a própria
+// Prefeitura já testa e usa, então imprime certo.
+export async function buscarHtmlNfseOficial(numeroNfse) {
+  const jar = await loginPortal();
+  await trocarParaAutorizacaoCarsant(jar);
+
+  const idInterno = await buscarIdInternoDaNota(jar, numeroNfse);
+
+  const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, {
+    headers: { Cookie: cookieHeader(jar) },
+  });
+  if (!resp.ok) throw new Error(`Falha ao abrir a nota no portal WebISS (status ${resp.status}).`);
+  const html = await resp.text();
+
+  // <base> pra CSS/imagens relativas da própria página (ex: /Content/css/...)
+  // continuarem carregando quando esse HTML for aberto fora do domínio do
+  // WebISS (nosso sistema só reaproveita o documento, não hospeda os assets).
+  return html.replace(/<head>/i, `<head><base href="${PORTAL_BASE}/">`);
+}
