@@ -112,23 +112,26 @@ export async function baixarDanfseOficialPdf(numeroNfse) {
 // mesmo endpoint que alimenta a tela "Consultar NFS-e" (grid AJAX).
 //
 // Duas coisas nada óbvias, confirmadas testando direto contra o portal
-// em 26/08/2026:
+// (e, na primeira tentativa, testando errado — ver nota abaixo):
 // 1. Sem filtro, esse endpoint devolve só as 10 notas mais recentes
 //    (ignora iDisplayLength/iDisplayStart maiores — parece um limite de
 //    segurança pra consulta "aberta"), então não dá pra confiar nele pra
 //    achar uma nota antiga varrendo página por página.
-// 2. O filtro que FUNCIONA é "NumeroDaNota" com o número COMPOSTO que a
-//    própria grade exibe (ano + sequencial com 9 dígitos, ex:
-//    "2026000000129") — o <Numero> puro devolvido pelo SOAP na emissão
-//    (ex: "129", o que fica salvo em notas_fiscais.numero_nfse) sozinho
-//    não filtra nada. Por isso essa função recebe o ano separado (tirado
-//    de notas_fiscais.data_emissao) só pra remontar esse número composto.
-async function buscarIdInternoDaNota(jar, numeroNfse, ano) {
-  const numeroComposto = `${ano}${String(numeroNfse).padStart(9, '0')}`;
+// 2. O filtro que FUNCIONA é "NumeroDaNota" com o número exatamente como
+//    a coluna "Número" da grade mostra (ano + sequencial com 9 dígitos,
+//    ex: "2026000000129") — que é o MESMO valor já salvo em
+//    notas_fiscais.numero_nfse (o <Numero> do SOAP na emissão já vem
+//    nesse formato composto, não é só o sequencial puro). Uma primeira
+//    tentativa desta função recebia o ano à parte pra "remontar" esse
+//    número — só que ele já vinha completo, e isso duplicava o ano
+//    (virava "20262026000000129", nunca encontrado). Testado e corrigido
+//    em 26/08/2026 direto contra o portal, incluindo pelo próprio botão
+//    do sistema em produção.
+async function buscarIdInternoDaNota(jar, numeroNfse) {
   const body = new URLSearchParams({
     iDisplayStart: '0',
     iDisplayLength: '10',
-    NumeroDaNota: numeroComposto,
+    NumeroDaNota: String(numeroNfse),
   });
   const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/listar/json`, {
     method: 'POST',
@@ -142,7 +145,7 @@ async function buscarIdInternoDaNota(jar, numeroNfse, ano) {
   if (!resp.ok) throw new Error(`Falha ao consultar a nota no portal WebISS (status ${resp.status}).`);
   const { data } = await resp.json();
   const linha = (data || [])[0];
-  if (!linha) throw new Error(`Nota ${numeroComposto} não encontrada no portal WebISS.`);
+  if (!linha) throw new Error(`Nota ${numeroNfse} não encontrada no portal WebISS.`);
   return linha[linha.length - 1];
 }
 
@@ -155,11 +158,11 @@ async function buscarIdInternoDaNota(jar, numeroNfse, ano) {
 // largo que corta informação ao imprimir (relatado pelo Ronaldo);
 // este é HTML normal com CSS de impressão (@media print) que a própria
 // Prefeitura já testa e usa, então imprime certo.
-export async function buscarHtmlNfseOficial(numeroNfse, ano) {
+export async function buscarHtmlNfseOficial(numeroNfse) {
   const jar = await loginPortal();
   await trocarParaAutorizacaoCarsant(jar);
 
-  const idInterno = await buscarIdInternoDaNota(jar, numeroNfse, ano);
+  const idInterno = await buscarIdInternoDaNota(jar, numeroNfse);
 
   const resp = await fetch(`${PORTAL_BASE}/issqn/nfse/visualizar/${idInterno}`, {
     headers: { Cookie: cookieHeader(jar) },

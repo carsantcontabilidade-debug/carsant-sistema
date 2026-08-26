@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 }
 
 async function buscarNotaDeProducao(admin, notaId) {
-  const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('numero_nfse, ambiente, data_emissao').eq('id', notaId).single();
+  const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('numero_nfse, ambiente').eq('id', notaId).single();
   if (notaError || !nota) return { erro: { status: 404, mensagem: 'Nota fiscal não encontrada.' } };
   if (!nota.numero_nfse) return { erro: { status: 400, mensagem: 'Esta nota não tem número da NFS-e registrado.' } };
   if (nota.ambiente !== 'producao') {
@@ -89,12 +89,7 @@ async function visualizarDanfseOficial(admin, req, res) {
   if (erro) return res.status(erro.status).json({ error: erro.mensagem });
 
   try {
-    // O portal filtra pelo número COMPOSTO (ano + sequencial, ver
-    // buscarIdInternoDaNota em _webiss-portal.js) — precisa do ano da
-    // emissão real da nota, não o ano atual (relevante perto da virada
-    // do ano, ou pra reimprimir uma nota antiga).
-    const ano = nota.data_emissao ? new Date(nota.data_emissao).getUTCFullYear() : new Date().getFullYear();
-    const html = await buscarHtmlNfseOficial(nota.numero_nfse, ano);
+    const html = await buscarHtmlNfseOficial(nota.numero_nfse);
     return res.status(200).json({ success: true, html });
   } catch (err) {
     return res.status(502).json({ error: err.message });
