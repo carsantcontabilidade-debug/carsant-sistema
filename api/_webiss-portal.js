@@ -207,7 +207,26 @@ export async function buscarPdfNfseOficialViaRenderizacao(numeroNfse) {
     await page.addStyleTag({ content: '.modal, .modal-backdrop { display: none !important; }' });
 
     await page.emulateMediaType('print');
-    const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
+
+    // O original do portal sempre sai em 1 página só. O Chromium minimalista
+    // usado aqui (@sparticuz/chromium) pode renderizar com métricas de fonte
+    // levemente diferentes das do Chrome normal de um usuário, o que pode
+    // empurrar as últimas linhas pra uma 2ª página mesmo respeitando o
+    // mesmo CSS de impressão (relatado pelo Ronaldo, confirmado comparando
+    // com o original: nunca deveria ter 2ª página). Mede a altura real do
+    // conteúdo já em modo impressão e encolhe proporcionalmente (mantendo a
+    // proporção largura/altura) só o suficiente pra caber numa página A4 —
+    // equivalente ao que a opção "Ajustar à página" faria manualmente.
+    const alturaConteudoPx = await page.evaluate(() => {
+      const el = document.getElementById('nota-eletronica-html');
+      return el ? el.scrollHeight : document.body.scrollHeight;
+    });
+    const ALTURA_UTIL_A4_PX = Math.round((297 - 4) * 96 / 25.4); // @page A4, margin 2mm cada lado
+    const escala = alturaConteudoPx > ALTURA_UTIL_A4_PX
+      ? Math.max(0.7, ALTURA_UTIL_A4_PX / alturaConteudoPx)
+      : 1;
+
+    const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true, scale: escala });
     return { pdfBase64: Buffer.from(pdfBuffer).toString('base64'), nomeArquivo: `DANFSe-${numeroNfse}.pdf` };
   } finally {
     await browser.close();
