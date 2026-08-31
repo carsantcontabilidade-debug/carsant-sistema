@@ -249,9 +249,12 @@ export default function ContasPagar() {
     window.open(data.signedUrl, '_blank')
   }
 
-  const mensais = despesas.filter(d => d.recorrencia === 'mensal')
-  const total = mensais.reduce((s, d) => s + (d.valor || 0), 0)
-  const pago = mensais.filter(d => statusDespesa(d) === 'pago').reduce((s, d) => s + (d.valor || 0), 0)
+  // Soma TODAS as despesas exibidas na tabela abaixo (mensal + única +
+  // eventual) — antes só contava recorrência "mensal", então despesas
+  // únicas importadas (ex: DARF, DAS) apareciam na lista mas ficavam de
+  // fora dos totais, deixando os cards muito abaixo do que a tabela mostra.
+  const total = despesas.reduce((s, d) => s + (d.valor || 0), 0)
+  const pago = despesas.filter(d => statusDespesa(d) === 'pago').reduce((s, d) => s + (d.valor || 0), 0)
   const fmt = v => 'R$ ' + Number(v).toLocaleString('pt-BR')
   const meses = Array.from({ length: 6 }, (_, i) => { const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1); return { mes: d.getMonth(), ano: d.getFullYear(), label: `${MES_NOMES[d.getMonth()]} ${d.getFullYear()}` } })
 
