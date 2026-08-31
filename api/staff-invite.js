@@ -12,11 +12,15 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ROLES_VALIDAS = ['gestor', 'colaborador'];
 const SETORES_VALIDOS = ['fiscal', 'pessoal', 'financeiro', 'contabil'];
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function corpoEmail({ nome, link }) {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
       <h2 style="color:#1F4788;">CARSANT Contabilidade</h2>
-      <p>Olá, ${nome}!</p>
+      <p>Olá, ${escapeHtml(nome)}!</p>
       <p>Você foi cadastrado(a) no sistema interno da CARSANT Contabilidade. Clique no botão abaixo para definir sua senha de acesso.</p>
       <p style="text-align:center; margin: 24px 0;">
         <a href="${link}" style="background:#1F4788; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold;">

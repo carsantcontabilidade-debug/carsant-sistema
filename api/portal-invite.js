@@ -16,6 +16,14 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// clientes.nome é editável pelo gestor, mas não é texto de sistema —
+// escapar por padrão evita que um nome de cliente com caractere de HTML
+// quebre o e-mail (defesa em profundidade, mesmo sem vetor de ataque
+// conhecido hoje).
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function corpoEmail({ nome, link, reenvio }) {
   const acao = reenvio ? 'redefinir sua senha de acesso' : 'ativar seu acesso';
   const assunto = reenvio
@@ -24,7 +32,7 @@ function corpoEmail({ nome, link, reenvio }) {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
       <h2 style="color:#1F4788;">CARSANT Contabilidade</h2>
-      <p>Olá, ${nome}!</p>
+      <p>Olá, ${escapeHtml(nome)}!</p>
       <p>Clique no botão abaixo para ${acao} no Portal do Cliente.</p>
       <p style="text-align:center; margin: 24px 0;">
         <a href="${link}" style="background:#1F4788; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold;">

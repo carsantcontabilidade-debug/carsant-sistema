@@ -12,6 +12,12 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// assunto/nome do cliente são texto livre — sem escapar, um assunto de
+// conversa malicioso vazava HTML pro e-mail da equipe sem filtro.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -38,11 +44,25 @@ export default async function handler(req, res) {
 
   const { data: conversa } = await admin
     .from('chat_conversas')
-    .select('id, assunto, setor, responsavel_atual_id, clientes(nome)')
+    .select('id, cliente_id, assunto, setor, responsavel_atual_id, clientes(nome)')
     .eq('id', conversaId)
     .single();
   if (!conversa) {
     return res.status(404).json({ error: 'Conversa não encontrada.' });
+  }
+
+  // Esta rota usa a service role key (ignora RLS) — sem checar quem está
+  // chamando, qualquer usuário autenticado (inclusive um cliente do
+  // Portal) podia mandar um conversaId de OUTRO cliente e disparar um
+  // aviso falso pra equipe como se fosse aquele cliente. Staff (tem linha
+  // em profiles) pode avisar qualquer conversa; cliente do Portal só pode
+  // avisar a própria.
+  const { data: perfilChamador } = await admin.from('profiles').select('id').eq('id', userData.user.id).maybeSingle();
+  if (!perfilChamador) {
+    const { data: clientePortal } = await admin.from('clientes').select('id').eq('auth_user_id', userData.user.id).maybeSingle();
+    if (!clientePortal || clientePortal.id !== conversa.cliente_id) {
+      return res.status(403).json({ error: 'Não autorizado.' });
+    }
   }
 
   let destinatarios = [];
@@ -70,8 +90,8 @@ export default async function handler(req, res) {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
       <h2 style="color:#1F4788;">CARSANT Contabilidade</h2>
-      <p><strong>${conversa.clientes?.nome || 'Um cliente'}</strong> enviou uma nova mensagem no chat.</p>
-      <p style="color:#555;">Assunto: ${conversa.assunto}</p>
+      <p><strong>${escapeHtml(conversa.clientes?.nome) || 'Um cliente'}</strong> enviou uma nova mensagem no chat.</p>
+      <p style="color:#555;">Assunto: ${escapeHtml(conversa.assunto)}</p>
       <p style="text-align:center; margin: 24px 0;">
         <a href="${origin}/comunicacao?conversa=${conversaId}" style="background:#1F4788; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold;">
           Abrir conversa

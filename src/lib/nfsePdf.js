@@ -16,6 +16,16 @@ async function carregarHtml2Pdf() {
   return window.html2pdf
 }
 
+// cliente.nome e nota.discriminacao são texto livre editável por
+// qualquer colaborador (não só gestor) — sem isso, um "onerror=..." num
+// nome de cliente ou numa discriminação de serviço executaria quando
+// QUALQUER OUTRO colaborador abrisse esse comprovante depois (o HTML
+// monta um <img>/<svg> malicioso e injeta via innerHTML em
+// comContainerTemporario abaixo).
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function fmtValor(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
@@ -32,14 +42,14 @@ function montarHtmlComprovante(nota, cliente) {
       <p style="color:#6b7280; font-size:12px; margin-top:0;">Documento gerado pelo sistema da CARSANT Contabilidade — não substitui o DANFSE oficial da Prefeitura.</p>
       <table style="width:100%; border-collapse: collapse; font-size:13px; margin-top:16px;">
         <tr><td style="padding:6px 0; color:#6b7280; width:40%;">Prestador</td><td style="padding:6px 0; font-weight:bold;">CARSANT Contabilidade LTDA</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280;">Tomador</td><td style="padding:6px 0; font-weight:bold;">${cliente?.nome || '—'}</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280;">CNPJ do tomador</td><td style="padding:6px 0;">${cliente?.cnpj || '—'}</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280;">Número da NFS-e</td><td style="padding:6px 0; font-weight:bold;">${nota.numero_nfse || '—'}</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280;">Código de verificação</td><td style="padding:6px 0;">${nota.codigo_verificacao || '—'}</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280;">Chave de acesso</td><td style="padding:6px 0;">${nota.chave_acesso || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280;">Tomador</td><td style="padding:6px 0; font-weight:bold;">${escapeHtml(cliente?.nome) || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280;">CNPJ do tomador</td><td style="padding:6px 0;">${escapeHtml(cliente?.cnpj) || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280;">Número da NFS-e</td><td style="padding:6px 0; font-weight:bold;">${escapeHtml(nota.numero_nfse) || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280;">Código de verificação</td><td style="padding:6px 0;">${escapeHtml(nota.codigo_verificacao) || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280;">Chave de acesso</td><td style="padding:6px 0;">${escapeHtml(nota.chave_acesso) || '—'}</td></tr>
         <tr><td style="padding:6px 0; color:#6b7280;">Competência</td><td style="padding:6px 0;">${fmtData(nota.competencia)}</td></tr>
         <tr><td style="padding:6px 0; color:#6b7280;">Valor dos serviços</td><td style="padding:6px 0; font-weight:bold;">${fmtValor(nota.valor_servicos)}</td></tr>
-        <tr><td style="padding:6px 0; color:#6b7280; vertical-align:top;">Discriminação</td><td style="padding:6px 0;">${nota.discriminacao || '—'}</td></tr>
+        <tr><td style="padding:6px 0; color:#6b7280; vertical-align:top;">Discriminação</td><td style="padding:6px 0;">${escapeHtml(nota.discriminacao) || '—'}</td></tr>
       </table>
       <p style="font-size:11px; color:#9ca3af; margin-top:24px;">
         Para validar o documento oficial (DANFSE), acesse o portal da Prefeitura de Feira de Santana (WebISS) e informe o código de verificação acima.
