@@ -749,6 +749,13 @@ export default function Cobrancas() {
       const blob = new Blob([base64ParaBytes(pdfBase64)], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
+      // Nunca era revogado — cada clique em "Ver boleto" vazava um Blob de
+      // ~150-300KB na memória da aba, que só some fechando/recarregando a
+      // página. Numa sessão longa clicando em várias cobranças isso
+      // acumula até a aba estourar com ERR_BLOB_OUT_OF_MEMORY (relatado
+      // pelo Ronaldo). Revoga depois de um tempo pra dar chance da aba
+      // nova terminar de carregar o PDF antes da URL virar inválida.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
       setErro(`Erro ao abrir boleto: ${e.message}`);
     }
