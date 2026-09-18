@@ -136,8 +136,15 @@ export default function Cobrancas() {
   const [loteResultados, setLoteResultados] = useState([]);
   const [loteEnviandoEmails, setLoteEnviandoEmails] = useState(false);
 
+  // Envio em lote (e-mail/WhatsApp) para cobranças já existentes na lista —
+  // diferente do "Lote" acima, que só gera cobrança nova. Este cobre o caso
+  // de cobranças/notas geradas antes (em outra sessão, ou dias atrás) que
+  // ainda precisam ser enviadas.
+  const [envioSelecionados, setEnvioSelecionados] = useState([]);
+  const [envioProcessando, setEnvioProcessando] = useState(null); // 'email' | 'whatsapp' | null
+
   useEffect(() => { carregarClientes(); }, []);
-  useEffect(() => { carregarCobrancas(); }, [clienteSelecionado, filtroStatus]);
+  useEffect(() => { carregarCobrancas(); setEnvioSelecionados([]); }, [clienteSelecionado, filtroStatus]);
 
   async function carregarClientes() {
     setLoadingClientes(true);
@@ -870,6 +877,60 @@ export default function Cobrancas() {
     setProcessando(false);
   }
 
+  function alternarEnvioSelecionado(id) {
+    setEnvioSelecionados(sel => sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
+  }
+
+  async function enviarEmailsSelecionados() {
+    const alvos = cobrancas.filter(c => envioSelecionados.includes(c.id) && c.clientes?.["email"]);
+    if (alvos.length === 0) {
+      setErro("Nenhuma das cobranças selecionadas tem e-mail cadastrado no cliente.");
+      return;
+    }
+    setErro("");
+    setSucesso("");
+    setEnvioProcessando("email");
+    let ok = 0;
+    const falhas = [];
+    for (const cob of alvos) {
+      try {
+        await enviarEmailCobrancaSilencioso(cob);
+        ok++;
+      } catch (e) {
+        falhas.push(`${cob.clientes?.nome}: ${e.message}`);
+      }
+    }
+    setEnvioProcessando(null);
+    setEnvioSelecionados([]);
+    setSucesso(`${ok} de ${alvos.length} e-mail(s) enviado(s) com sucesso (cobrança + nota fiscal, quando houver).`);
+    if (falhas.length) setErro(`Falha em ${falhas.length}: ${falhas.join(" | ")}`);
+  }
+
+  // wa.me não tem API de disparo em massa — cada conversa ainda precisa de
+  // um clique em "Enviar" dentro do WhatsApp. Isto só poupa o trabalho de
+  // abrir o detalhe de cada cobrança uma por uma. Chrome/Edge podem
+  // bloquear a abertura de várias abas em sequência (popup blocker); se
+  // isso acontecer, o aviso de pop-up bloqueado aparece na barra de
+  // endereço — permitindo pop-ups deste site uma vez, os próximos cliques
+  // em lote passam a abrir todas as abas normalmente.
+  async function abrirWhatsAppSelecionados() {
+    const alvos = cobrancas.filter(c => envioSelecionados.includes(c.id) && c.clientes?.telefone);
+    if (alvos.length === 0) {
+      setErro("Nenhuma das cobranças selecionadas tem telefone cadastrado no cliente.");
+      return;
+    }
+    setErro("");
+    setSucesso("");
+    setEnvioProcessando("whatsapp");
+    for (const cob of alvos) {
+      await abrirWhatsApp(cob);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    setEnvioProcessando(null);
+    setEnvioSelecionados([]);
+    setSucesso(`${alvos.length} conversa(s) do WhatsApp aberta(s). Se alguma aba não abriu, permita pop-ups deste site (aviso na barra de endereço) e clique em enviar de novo.`);
+  }
+
   // Totais
   const totalGeradas = cobrancas.filter(c => c.status === "gerada").reduce((s, c) => s + Number(c.valor), 0);
   const totalPagas = cobrancas.filter(c => c.status === "paga").reduce((s, c) => s + Number(c.valor), 0);
@@ -979,6 +1040,24 @@ export default function Cobrancas() {
         {sucesso && <div className="mx-6 mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm">{sucesso}</div>}
         {erro && <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{erro}</div>}
 
+        {/* Barra de envio em lote — aparece ao marcar cobranças na lista abaixo */}
+        {envioSelecionados.length > 0 && (
+          <div className="mx-6 mt-4 bg-purple-50 border border-purple-200 rounded-lg px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+            <span className="text-sm text-purple-700 font-medium">{envioSelecionados.length} selecionada(s)</span>
+            <div className="flex items-center gap-2">
+              <button onClick={enviarEmailsSelecionados} disabled={!!envioProcessando}
+                className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-purple-700 font-medium disabled:opacity-50">
+                {envioProcessando === "email" ? "Enviando e-mails..." : "✉️ Enviar e-mails"}
+              </button>
+              <button onClick={abrirWhatsAppSelecionados} disabled={!!envioProcessando}
+                className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
+                {envioProcessando === "whatsapp" ? "Abrindo..." : "📱 Abrir WhatsApp"}
+              </button>
+              <button onClick={() => setEnvioSelecionados([])} disabled={!!envioProcessando} className="text-purple-600 text-xs hover:underline">Limpar seleção</button>
+            </div>
+          </div>
+        )}
+
         {/* Lista */}
         <div className="flex-1 overflow-y-auto p-6">
           {loadingCobrancas ? (
@@ -991,10 +1070,23 @@ export default function Cobrancas() {
             </div>
           ) : (
             <div className="space-y-3">
+              <div className="flex justify-end">
+                <button onClick={() => setEnvioSelecionados(cobrancas.map(c => c.id))} className="text-xs text-purple-600 hover:underline">
+                  Selecionar todas ({cobrancas.length}) para envio
+                </button>
+              </div>
               {cobrancas.map(cob => (
                 <div key={cob.id} onClick={() => abrirDetalhe(cob)} className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={envioSelecionados.includes(cob.id)}
+                        onClick={e => e.stopPropagation()}
+                        onChange={() => alternarEnvioSelecionado(cob.id)}
+                        className="w-4 h-4 shrink-0"
+                        title="Selecionar para envio em lote"
+                      />
                       <div className="text-2xl">🧾</div>
                       <div className="flex-1 min-w-0">
                         {!clienteSelecionado && <div className="font-semibold text-gray-800 text-sm">{cob.clientes?.nome}</div>}
