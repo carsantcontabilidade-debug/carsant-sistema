@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { buildTransport } from './_mailer.js';
+import { enviarEmailTransacional } from './_mailer.js';
 
 // Envia e-mail em nome da CARSANT via SMTP próprio — usado por telas
 // internas (Cobrancas, Notas Fiscais, Atendimento) pra mandar boleto/nota
@@ -40,15 +40,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Campos obrigatórios: to, subject e text ou html' });
   }
 
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (!process.env.TRANSACTIONAL_SMTP_USER || !process.env.TRANSACTIONAL_SMTP_PASS) {
     return res.status(500).json({
-      error: 'Credenciais de SMTP não configuradas no servidor (SMTP_USER / SMTP_PASS)',
+      error: 'Credenciais de SMTP não configuradas no servidor (TRANSACTIONAL_SMTP_USER / TRANSACTIONAL_SMTP_PASS)',
     });
   }
 
   try {
-    const transporter = buildTransport();
-
     // attachmentBase64/attachmentFilename: anexo único (compatibilidade com o
     // fluxo já existente do boleto). attachments: lista extra, cada item com
     // { contentBase64, filename, cid? } — cid permite referenciar a imagem
@@ -62,18 +60,17 @@ export default async function handler(req, res) {
       })) : []),
     ];
 
-    const info = await transporter.sendMail({
-      from: `"CARSANT Contabilidade" <${process.env.SMTP_USER}>`,
-      to,
-      subject,
-      text: text || undefined,
-      html: html || undefined,
-      attachments,
-    });
+    // Trocado do SMTP do UOL Host pro mesmo SMTP transacional (Gmail) já
+    // usado por portal-invite/staff-invite/chat-avisar/backup — o UOL vinha
+    // rejeitando entregas com "554 5.7.1 Rejected for policy reason"
+    // (reputação do IP compartilhado do UOL, não algo controlável por nós;
+    // ver o comentário original em _mailer.js sobre o mesmo problema já
+    // observado no fluxo do Portal do Cliente).
+    const info = await enviarEmailTransacional({ to, subject, text, html, attachments });
 
     return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (error) {
-    console.error('Erro ao enviar e-mail via SMTP UOL:', error);
+    console.error('Erro ao enviar e-mail via SMTP transacional:', error);
     return res.status(502).json({
       error: 'Falha ao enviar e-mail',
       detail: error.message,

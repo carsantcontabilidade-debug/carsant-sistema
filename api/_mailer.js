@@ -1,39 +1,12 @@
 import nodemailer from 'nodemailer';
 
-// Servidor SMTP do UOL HOST (E-mail Profissional / domínio próprio).
-// Compartilhado entre send-email.js e portal-invite.js.
-const SMTP_HOST = process.env.SMTP_HOST || 'smtps.uhserver.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-
-export function buildTransport() {
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    requireTLS: SMTP_PORT !== 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-}
-
-export async function enviarEmail({ to, subject, text, html }) {
-  const transporter = buildTransport();
-  return transporter.sendMail({
-    from: `"CARSANT Contabilidade" <${process.env.SMTP_USER}>`,
-    to,
-    subject,
-    text: text || undefined,
-    html: html || undefined,
-  });
-}
-
-// SMTP dedicado para e-mails transacionais do Portal do Cliente
-// (convite/notificação) — o SMTP do UOL Host (usado nos boletos acima)
-// se mostrou pouco confiável para esse fluxo especificamente, rejeitando
-// entregas repetidas vezes mesmo em uso normal (não só em rajada de teste).
-// Usa a conta Gmail já existente da CARSANT, via senha de app.
+// SMTP usado para todo e-mail enviado pelo sistema (boleto/cobrança, nota
+// fiscal, convite/notificação do Portal do Cliente, aviso de chat, backup)
+// — a conta Gmail já existente da CARSANT, via senha de app. Antes existia
+// um segundo transporte via SMTP do UOL Host, mas ele se mostrou pouco
+// confiável (rejeitava entregas com "554 5.7.1 Rejected for policy reason"
+// mesmo em uso normal, não só em rajada de teste) e foi removido em favor
+// deste único transporte pra todos os fluxos.
 function buildTransportTransacional() {
   return nodemailer.createTransport({
     host: process.env.TRANSACTIONAL_SMTP_HOST || 'smtp.gmail.com',
