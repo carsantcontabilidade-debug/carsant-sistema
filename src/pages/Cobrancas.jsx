@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -85,13 +85,19 @@ async function chamarEdgeFunction(action, payload) {
 
 export default function Cobrancas() {
   const { profile } = useAuth();
-  const [clientes, setClientes] = useState([]);
-  const [cobrancas, setCobrancas] = useState([]);
+  // Listas também ficam em cache (sessionStorage): ao voltar pra esta
+  // página, mostra os dados já conhecidos na hora, sem tela de carregamento
+  // em branco, enquanto atualiza em segundo plano.
+  const [clientes, setClientes] = usePersistedState("carsant_cobrancas_clientesLista", []);
+  const [cobrancas, setCobrancas] = usePersistedState("carsant_cobrancas_lista", []);
   const [clienteSelecionado, setClienteSelecionado] = useState(null);
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [loadingClientes, setLoadingClientes] = useState(true);
+  // Também persistido: garante que o filtro restaurado bate com a lista em
+  // cache (senão poderia mostrar rapidamente resultados de outro filtro).
+  const [filtroStatus, setFiltroStatus] = usePersistedState("carsant_cobrancas_filtroStatus", "todos");
+  const [loadingClientes, setLoadingClientes] = useState(clientes.length === 0);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
+  const primeiraCargaCobrancas = useRef(true);
   const [modalAberto, setModalAberto] = useState(false);
   const [modalTipo, setModalTipo] = useState("nova"); // nova | detalhe
   const [cobrancaAtual, setCobrancaAtual] = useState(null);
@@ -150,14 +156,19 @@ export default function Cobrancas() {
   useEffect(() => { carregarCobrancas(); setEnvioSelecionados([]); }, [clienteSelecionado, filtroStatus]);
 
   async function carregarClientes() {
-    setLoadingClientes(true);
+    setLoadingClientes(clientes.length === 0);
     const { data } = await supabase.from("clientes").select("*").order("nome");
     setClientes(data || []);
     setLoadingClientes(false);
   }
 
   async function carregarCobrancas() {
-    setLoadingCobrancas(true);
+    // Só evita a tela de carregamento na primeira vez que a página monta (com
+    // dados em cache) — ao trocar de cliente/filtro, mostra o carregamento
+    // normal, pra não misturar resultados de um filtro com o de outro.
+    const semSpinner = primeiraCargaCobrancas.current && cobrancas.length > 0;
+    primeiraCargaCobrancas.current = false;
+    setLoadingCobrancas(!semSpinner);
     let query = supabase
       .from("cobrancas")
       // Precisa dos campos de cnpj/endereço aqui (não só nome/telefone/email)

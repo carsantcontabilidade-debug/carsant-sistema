@@ -51,8 +51,12 @@ const emptyForm = {
 
 export default function Clientes() {
   const { isGestor } = useAuth()
-  const [clientes, setClientes] = useState([])
-  const [loading, setLoading] = useState(true)
+  // Lista também fica em cache (sessionStorage): ao voltar pra esta página,
+  // mostra os dados já conhecidos na hora, sem tela de carregamento em
+  // branco, enquanto atualiza em segundo plano. Só mostra o carregamento de
+  // verdade na primeira vez, quando ainda não há nada em cache.
+  const [clientes, setClientes] = usePersistedState('carsant_clientes_lista', [])
+  const [loading, setLoading] = useState(clientes.length === 0)
   const [busca, setBusca] = useState('')
   const [filtroRegime, setFiltroRegime] = useState('')
   // Persistidos (sessionStorage) para sobreviver a sair da página e voltar —
@@ -80,7 +84,7 @@ export default function Clientes() {
   useEffect(() => { fetchClientes(); buscarColaboradores().then(setColabs) }, [])
 
   async function fetchClientes() {
-    setLoading(true)
+    setLoading(clientes.length === 0)
     const { data } = await supabase.from('clientes').select('*').order('nome')
     setClientes(data || [])
     setLoading(false)
