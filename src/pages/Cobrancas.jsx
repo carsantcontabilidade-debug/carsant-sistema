@@ -931,6 +931,42 @@ export default function Cobrancas() {
     setSucesso(`${alvos.length} conversa(s) do WhatsApp aberta(s). Se alguma aba não abriu, permita pop-ups deste site (aviso na barra de endereço) e clique em enviar de novo.`);
   }
 
+  async function cancelarSelecionadas() {
+    const alvos = cobrancas.filter(c => envioSelecionados.includes(c.id) && c.codigo_solicitacao && c.status !== "cancelada" && c.status !== "paga");
+    if (alvos.length === 0) {
+      setErro("Nenhuma das cobranças selecionadas pode ser cancelada (já cancelada, já paga, ou sem cobrança gerada no Inter).");
+      return;
+    }
+    if (!confirm(`Confirmar cancelamento de ${alvos.length} cobrança(s) no Banco Inter? Esta ação não pode ser desfeita.`)) return;
+    setErro("");
+    setSucesso("");
+    setEnvioProcessando("cancelar");
+    let ok = 0;
+    const falhas = [];
+    for (const cob of alvos) {
+      try {
+        await chamarEdgeFunction("cancelar_cobranca", {
+          codigoSolicitacao: cob.codigo_solicitacao,
+          motivo: "ACERTOS",
+        });
+        const { error: errAtualizar } = await supabase.from("cobrancas").update({
+          status: "cancelada",
+          cancelada_em: new Date().toISOString(),
+          motivo_cancelamento: "Cancelado pelo escritório (lote)",
+        }).eq("id", cob.id);
+        if (errAtualizar) throw new Error(errAtualizar.message);
+        ok++;
+      } catch (e) {
+        falhas.push(`${cob.clientes?.nome}: ${e.message}`);
+      }
+    }
+    setEnvioProcessando(null);
+    setEnvioSelecionados([]);
+    carregarCobrancas();
+    setSucesso(`${ok} de ${alvos.length} cobrança(s) cancelada(s) com sucesso.`);
+    if (falhas.length) setErro(`Falha em ${falhas.length}: ${falhas.join(" | ")}`);
+  }
+
   // Totais
   const totalGeradas = cobrancas.filter(c => c.status === "gerada").reduce((s, c) => s + Number(c.valor), 0);
   const totalPagas = cobrancas.filter(c => c.status === "paga").reduce((s, c) => s + Number(c.valor), 0);
@@ -1052,6 +1088,10 @@ export default function Cobrancas() {
               <button onClick={abrirWhatsAppSelecionados} disabled={!!envioProcessando}
                 className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
                 {envioProcessando === "whatsapp" ? "Abrindo..." : "📱 Abrir WhatsApp"}
+              </button>
+              <button onClick={cancelarSelecionadas} disabled={!!envioProcessando}
+                className="bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-700 font-medium disabled:opacity-50">
+                {envioProcessando === "cancelar" ? "Cancelando..." : "❌ Cancelar"}
               </button>
               <button onClick={() => setEnvioSelecionados([])} disabled={!!envioProcessando} className="text-purple-600 text-xs hover:underline">Limpar seleção</button>
             </div>
