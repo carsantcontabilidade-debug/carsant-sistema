@@ -801,7 +801,7 @@ export default function Comunicacao() {
                 </div>
                 <div className="flex gap-3 mt-6">
                   {comunicacaoAtual.canal === "whatsapp" && comunicacaoAtual.clientes?.telefone && (
-                    <a href={`https://wa.me/55${formatarTelefone(comunicacaoAtual.clientes.telefone)}?text=${encodeURIComponent(comunicacaoAtual.mensagem)}`} target="whatsapp_web" rel="noreferrer" className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600">
+                    <a href={`https://wa.me/55${formatarTelefone(comunicacaoAtual.clientes.telefone)}?text=${encodeURIComponent(comunicacaoAtual.mensagem)}`} target="whatsapp_web" className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600">
                       📱 Reenviar WhatsApp
                     </a>
                   )}
