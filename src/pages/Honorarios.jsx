@@ -12,6 +12,7 @@ export default function Honorarios() {
   const [anoAtivo, setAnoAtivo] = useState(hoje.getFullYear())
   const [clientes, setClientes] = useState([])
   const [pagamentos, setPagamentos] = useState([])
+  const [cobrancasPagasPorCliente, setCobrancasPagasPorCliente] = useState({})
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
@@ -24,12 +25,23 @@ export default function Honorarios() {
 
   async function fetchDados() {
     setLoading(true)
-    const [{ data: c }, { data: p }] = await Promise.all([
+    const mesReferencia = `${anoAtivo}-${String(mesAtivo + 1).padStart(2, '0')}`
+    const [{ data: c }, { data: p }, { data: cb }] = await Promise.all([
       supabase.from('clientes').select('*').gt('valor_honorario', 0).order('nome'),
-      supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtivo).eq('ano', anoAtivo)
+      supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtivo).eq('ano', anoAtivo),
+      // Honorário pago via Cobranças (boleto/Pix pelo Inter, ou baixa manual
+      // lá) não gerava nenhum registro aqui — o cliente continuava
+      // aparecendo como pendente/atraso mesmo já tendo pago (reportado pelo
+      // Ronaldo em 2026-09-21). Busca as cobranças de honorário já pagas
+      // deste mês de referência e mescla no status abaixo, sem precisar
+      // duplicar escrita nas duas tabelas.
+      supabase.from('cobrancas').select('cliente_id, paga_em').eq('tipo', 'honorario').eq('mes_referencia', mesReferencia).eq('status', 'paga'),
     ])
     setClientes(c || [])
     setPagamentos(p || [])
+    const porCliente = {}
+    for (const cob of cb || []) porCliente[cob.cliente_id] = cob.paga_em
+    setCobrancasPagasPorCliente(porCliente)
     setLoading(false)
   }
 
@@ -51,8 +63,17 @@ export default function Honorarios() {
     if (registro?.oculto) return 'oculto'
     if (registro?.isento) return 'isento'
     if (registro?.pago) return 'pago'
+    if (cobrancasPagasPorCliente[c.id]) return 'pago'
     const venc = new Date(anoAtivo, mesAtivo, c.dia_vencimento || 10)
     return hoje > venc ? 'atraso' : 'pendente'
+  }
+
+  // 'pago' só pelo lado de Cobranças (dinheiro já recebido de verdade via
+  // Inter/baixa manual) — "Desfazer" aqui não mexeria em nada real, então
+  // fica escondido; o ajuste é lá em Cobranças.
+  function pagoSoPorCobranca(c) {
+    const registro = pagamentos.find(p => p.cliente_id === c.id)
+    return !registro?.pago && !!cobrancasPagasPorCliente[c.id]
   }
 
   async function marcarPago(clienteId) {
@@ -313,9 +334,13 @@ export default function Honorarios() {
                           </button>
                         )}
                         {st === 'pago' && (
-                          <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
-                            <RefreshCw className="w-3.5 h-3.5" /> Desfazer
-                          </button>
+                          pagoSoPorCobranca(c) ? (
+                            <span className="text-xs text-gray-400" title="Pago via Cobranças (boleto/Pix) — ajuste por lá">via Cobranças</span>
+                          ) : (
+                            <button onClick={() => desmarcarPago(c.id)} className="btn-ghost btn-sm gap-1.5">
+                              <RefreshCw className="w-3.5 h-3.5" /> Desfazer
+                            </button>
+                          )
                         )}
                         {(st === 'pendente' || st === 'atraso') && (
                           <>
