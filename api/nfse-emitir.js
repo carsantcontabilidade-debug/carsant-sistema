@@ -162,6 +162,32 @@ async function emitirNota(admin, req, res, userId) {
     dados.rpsNumero = await proximoRpsNumero(admin, ambienteFinal, dados.rpsSerie);
   }
 
+  // Reserva o RPS gravando a nota (status 'erro') ANTES de chamar o
+  // WebISS — não só depois de um sucesso. Se a chamada falhar depois que o
+  // WebISS já tiver registrado o RPS do lado dele (timeout na nossa ponta,
+  // erro numa etapa posterior do processamento deles, etc.), o próximo
+  // proximoRpsNumero() precisa enxergar esse número como já usado; senão
+  // reincide no mesmo número numa nova tentativa e o WebISS recusa com
+  // "[E10] RPS já informado" (confirmado com o Ronaldo em emissão de lote).
+  // A constraint unique(ambiente, rps_numero, rps_serie) da tabela também
+  // passa a barrar de graça uma colisão de verdade (ex.: duplo clique).
+  const { data: notaReservada, error: reservaError } = await admin.from('notas_fiscais').insert({
+    cliente_id: clienteId || null,
+    cobranca_id: cobrancaId || null,
+    ambiente: ambienteFinal,
+    rps_numero: dados.rpsNumero,
+    rps_serie: dados.rpsSerie,
+    competencia: dados.competencia,
+    valor_servicos: dados.valorServicos,
+    discriminacao: dados.discriminacao,
+    status: 'erro',
+    erro_mensagem: 'Emissão em andamento...',
+    emitida_por: userId,
+  }).select('id').single();
+  if (reservaError) {
+    return res.status(502).json({ error: `Falha ao reservar o número do RPS: ${reservaError.message}` });
+  }
+
   try {
     const envelope = montarDpsAssinada({
       ...dados,
@@ -171,27 +197,19 @@ async function emitirNota(admin, req, res, userId) {
     const resultadoXml = await enviarGerarNfse(envelope, ambienteFinal);
     const { numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml);
 
-    const { error: insertError } = await admin.from('notas_fiscais').insert({
-      cliente_id: clienteId || null,
-      cobranca_id: cobrancaId || null,
-      ambiente: ambienteFinal,
-      rps_numero: dados.rpsNumero,
-      rps_serie: dados.rpsSerie,
+    const { error: updateError } = await admin.from('notas_fiscais').update({
       numero_nfse: numero,
       codigo_verificacao: codigoVerificacao,
       chave_acesso: chaveAcesso,
-      competencia: dados.competencia,
       data_emissao: dataEmissao || null,
-      valor_servicos: dados.valorServicos,
-      discriminacao: dados.discriminacao,
       status: 'emitida',
+      erro_mensagem: null,
       xml_resposta: resultadoXml,
-      emitida_por: userId,
-    });
-    if (insertError) {
+    }).eq('id', notaReservada.id);
+    if (updateError) {
       // A nota já foi emitida de verdade no WebISS — não falhar a resposta
       // por causa de um erro ao só *registrar* isso aqui, mas avisar.
-      console.error('Falha ao gravar notas_fiscais:', insertError.message);
+      console.error('Falha ao gravar notas_fiscais:', updateError.message);
     }
 
     return res.status(200).json({
@@ -203,6 +221,7 @@ async function emitirNota(admin, req, res, userId) {
       resultadoXml,
     });
   } catch (err) {
+    await admin.from('notas_fiscais').update({ erro_mensagem: err.message }).eq('id', notaReservada.id);
     return res.status(502).json({ error: err.message });
   }
 }
@@ -270,6 +289,27 @@ async function substituirNota(admin, req, res, userId) {
     dados.rpsNumero = await proximoRpsNumero(admin, notaAntiga.ambiente, dados.rpsSerie);
   }
 
+  // Mesma lógica de reserva do RPS usada em emitirNota (ver comentário lá) —
+  // grava a nova nota (status 'erro') antes de chamar o WebISS, pra
+  // proximoRpsNumero() não reutilizar esse número numa tentativa seguinte.
+  const { data: notaReservada, error: reservaError } = await admin.from('notas_fiscais').insert({
+    cliente_id: notaAntiga.cliente_id,
+    cobranca_id: notaAntiga.cobranca_id,
+    ambiente: notaAntiga.ambiente,
+    rps_numero: dados.rpsNumero,
+    rps_serie: dados.rpsSerie,
+    competencia: dados.competencia,
+    valor_servicos: dados.valorServicos,
+    discriminacao: dados.discriminacao,
+    status: 'erro',
+    erro_mensagem: 'Emissão em andamento...',
+    emitida_por: userId,
+    substitui_nota_id: notaId,
+  }).select('id').single();
+  if (reservaError) {
+    return res.status(502).json({ error: `Falha ao reservar o número do RPS: ${reservaError.message}` });
+  }
+
   try {
     const envelope = montarSubstituirNfseEnvio(
       { ambiente: notaAntiga.ambiente, numero: notaAntiga.numero_nfse },
@@ -287,25 +327,16 @@ async function substituirNota(admin, req, res, userId) {
     }).eq('id', notaId);
     if (updateError) console.error('Falha ao marcar nota antiga como cancelada:', updateError.message);
 
-    const { error: insertError } = await admin.from('notas_fiscais').insert({
-      cliente_id: notaAntiga.cliente_id,
-      cobranca_id: notaAntiga.cobranca_id,
-      ambiente: notaAntiga.ambiente,
-      rps_numero: dados.rpsNumero,
-      rps_serie: dados.rpsSerie,
+    const { error: novaError } = await admin.from('notas_fiscais').update({
       numero_nfse: numero,
       codigo_verificacao: codigoVerificacao,
       chave_acesso: chaveAcesso,
-      competencia: dados.competencia,
       data_emissao: dataEmissao || null,
-      valor_servicos: dados.valorServicos,
-      discriminacao: dados.discriminacao,
       status: 'emitida',
+      erro_mensagem: null,
       xml_resposta: resultadoXml,
-      emitida_por: userId,
-      substitui_nota_id: notaId,
-    });
-    if (insertError) console.error('Falha ao gravar a nova nota (substituição):', insertError.message);
+    }).eq('id', notaReservada.id);
+    if (novaError) console.error('Falha ao gravar a nova nota (substituição):', novaError.message);
 
     return res.status(200).json({
       success: true,
@@ -316,6 +347,7 @@ async function substituirNota(admin, req, res, userId) {
       resultadoXml,
     });
   } catch (err) {
+    await admin.from('notas_fiscais').update({ erro_mensagem: err.message }).eq('id', notaReservada.id);
     return res.status(502).json({ error: err.message });
   }
 }
