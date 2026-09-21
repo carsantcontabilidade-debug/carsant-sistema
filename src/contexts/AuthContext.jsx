@@ -37,8 +37,18 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchProfile(userId) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+  async function fetchProfile(userId, tentativa = 0) {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    // Falha transitória (ex.: rede ainda subindo quando a aba acorda de ter
+    // sido descartada em segundo plano pelo navegador) não pode virar
+    // "profile = null" direto — o GestorRoute lê isso como "não é gestor" e
+    // manda até o próprio Ronaldo de volta pro Dashboard sem aviso nenhum
+    // (relatado em 2026-09-21, depois de voltar de uma aba do WhatsApp).
+    // Tenta mais uma vez antes de desistir de verdade.
+    if (error && tentativa === 0) {
+      await new Promise((r) => setTimeout(r, 1000))
+      return fetchProfile(userId, tentativa + 1)
+    }
     setProfile(data)
     setLoading(false)
   }
