@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { Plus, Search, Edit2, Trash2, ChevronDown, Wand2, Loader2, X, Save, UserPlus, CheckCircle2, SearchCheck, FileSignature, MapPin, Map, List } from 'lucide-react'
 import MapaClientes from './MapaClientes'
 
@@ -54,11 +55,14 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [filtroRegime, setFiltroRegime] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editId, setEditId] = useState(null)
+  // Persistidos (sessionStorage) para sobreviver a sair da página e voltar —
+  // ex.: abrir o cadastro, sair rapidamente pra conferir algo em outra tela
+  // e voltar sem perder o que já tinha sido digitado.
+  const [modalOpen, setModalOpen] = usePersistedState('carsant_clientes_modalOpen', false)
+  const [form, setForm] = usePersistedState('carsant_clientes_form', emptyForm)
+  const [editId, setEditId] = usePersistedState('carsant_clientes_editId', null)
+  const [obrSel, setObrSel] = usePersistedState('carsant_clientes_obrSel', {}) // {obrId: {sel: bool, resp: string}}
   const [saving, setSaving] = useState(false)
-  const [obrSel, setObrSel] = useState({}) // {obrId: {sel: bool, resp: string}}
   const [convidando, setConvidando] = useState(null) // id do cliente sendo convidado
   const [emitindoNfse, setEmitindoNfse] = useState(null) // id do cliente com NFS-e em emissão
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)

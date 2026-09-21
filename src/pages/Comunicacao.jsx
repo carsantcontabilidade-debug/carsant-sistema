@@ -9,6 +9,7 @@ import {
 } from "../lib/comunicacao";
 import { SETORES } from "../lib/chat";
 import { sanitizarNomeArquivo } from "../lib/storage";
+import { usePersistedState } from "../hooks/usePersistedState";
 
 const STATUS_CORES = {
   enviado: "bg-green-100 text-green-700",
@@ -41,9 +42,11 @@ export default function Comunicacao() {
   const [loadingClientes, setLoadingClientes] = useState(true);
   const [loadingComms, setLoadingComms] = useState(false);
 
-  const [clienteForm, setClienteForm] = useState(null);
+  // Persistidos (sessionStorage): se o usuário sair da página pra conferir
+  // algo em outra tela e voltar, a mensagem que estava sendo escrita continua ali.
+  const [clienteForm, setClienteForm] = usePersistedState("carsant_comunicacao_clienteForm", null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = usePersistedState("carsant_comunicacao_form", {
     cliente_id: "",
     canal: "whatsapp",
     template: "",

@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import { buscarNomeMunicipio } from "../lib/geoBrasil";
+import { usePersistedState } from "../hooks/usePersistedState";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -98,7 +99,9 @@ export default function Cobrancas() {
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
 
-  const [form, setForm] = useState({
+  // Persistidos (sessionStorage): se o usuário sair da página pra conferir
+  // algo em outra tela e voltar, a cobrança que estava sendo criada continua ali.
+  const [form, setForm] = usePersistedState("carsant_cobrancas_form", {
     cliente_id: "",
     descricao: "",
     valor: "",
@@ -109,7 +112,7 @@ export default function Cobrancas() {
     enviar_whatsapp: false,
     emitir_nota: false,
   });
-  const [clienteForm, setClienteForm] = useState(null);
+  const [clienteForm, setClienteForm] = usePersistedState("carsant_cobrancas_clienteForm", null);
   const [baixaForm, setBaixaForm] = useState({ dataPagamento: "", formaPagamento: "dinheiro" });
 
   // Cadastro rápido de cliente novo, direto do formulário de cobrança —

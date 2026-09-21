@@ -8,6 +8,7 @@ import {
   criarEventoGoogle, atualizarEventoGoogle, deletarEventoGoogle, buscarEventosGoogle
 } from '../lib/googleCalendar'
 import { buscarColaboradores } from '../lib/colaboradores'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const TIPOS = ['reuniao','prazo','visita','outro']
 const TIPO_LABEL = { reuniao: 'Reunião', prazo: 'Prazo fiscal', visita: 'Visita', outro: 'Outro' }
@@ -20,10 +21,12 @@ export default function Agenda() {
   const [clientes, setClientes] = useState([])
   const [loading, setLoading] = useState(true)
   const [diaSelecionado, setDiaSelecionado] = useState(null)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editId, setEditId] = useState(null)
-  const [editGoogleId, setEditGoogleId] = useState(null)
+  // Persistidos (sessionStorage): sair da página e voltar não apaga o
+  // compromisso que estava sendo criado/editado.
+  const [modalOpen, setModalOpen] = usePersistedState('carsant_agenda_modalOpen', false)
+  const [form, setForm] = usePersistedState('carsant_agenda_form', emptyForm)
+  const [editId, setEditId] = usePersistedState('carsant_agenda_editId', null)
+  const [editGoogleId, setEditGoogleId] = usePersistedState('carsant_agenda_editGoogleId', null)
   const [saving, setSaving] = useState(false)
   const [googleConectado, setGoogleConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)

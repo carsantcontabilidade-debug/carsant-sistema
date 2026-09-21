@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, CheckCircle, RefreshCw, Edit2, Trash2, Search, Loader2, X, Save, Upload, Paperclip, FileSearch } from 'lucide-react'
 import { analisarXmlNota, analisarPdfBoleto, PdfProtegidoPorSenha } from '../lib/importarConta'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const CATEGORIAS = ['Aluguel','Salários / Pró-labore','Sistemas / Softwares','Contador','Energia / Água / Internet','Impostos','Comissões','Outras']
 const MES_NOMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -18,9 +19,11 @@ export default function ContasPagar() {
   const [despesas, setDespesas] = useState([])
   const [pagamentos, setPagamentos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editId, setEditId] = useState(null)
+  // Persistidos (sessionStorage): sair da página pra conferir algo em outra
+  // tela e voltar não apaga o cadastro que estava sendo preenchido.
+  const [modalOpen, setModalOpen] = usePersistedState('carsant_contasPagar_modalOpen', false)
+  const [form, setForm] = usePersistedState('carsant_contasPagar_form', emptyForm)
+  const [editId, setEditId] = usePersistedState('carsant_contasPagar_editId', null)
   const [saving, setSaving] = useState(false)
 
   // Importação automática (XML de nota fiscal / PDF de boleto) — suporta

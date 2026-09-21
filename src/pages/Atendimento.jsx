@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
 import { Plus, Edit2, Trash2, Search, Loader2, X, Save, Wand2, Copy, Mail } from 'lucide-react'
 import { format } from 'date-fns'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const CANAIS = ['whatsapp','email','call','presencial','outro']
 const CANAL_LABEL = { whatsapp: '📱 WhatsApp', email: '📧 E-mail', call: '📞 Telefone', presencial: '🤝 Presencial', outro: '💬 Outro' }
@@ -25,9 +26,11 @@ export default function Atendimento() {
   const [clientes, setClientes] = useState([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editId, setEditId] = useState(null)
+  // Persistidos (sessionStorage): sair da página e voltar não apaga o
+  // atendimento que estava sendo registrado.
+  const [modalOpen, setModalOpen] = usePersistedState('carsant_atendimento_modalOpen', false)
+  const [form, setForm] = usePersistedState('carsant_atendimento_form', emptyForm)
+  const [editId, setEditId] = usePersistedState('carsant_atendimento_editId', null)
   const [saving, setSaving] = useState(false)
   // Email IA
   const [template, setTemplate] = useState(null)

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer, XCircle, Repeat, X, Square, CheckSquare, Send } from 'lucide-react'
 import { baixarComprovantePdf, gerarComprovantePdfBase64, textoParaBase64Utf8 } from '../lib/nfsePdf'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -57,7 +58,9 @@ const emptyConsulta = {
 
 export default function NfseEmitir() {
   const { profile } = useAuth()
-  const [form, setForm] = useState(emptyForm)
+  // Persistido (sessionStorage): sair da página pra conferir algo em outra
+  // tela e voltar não apaga o que já tinha sido preenchido aqui.
+  const [form, setForm] = usePersistedState('carsant_nfseEmitir_form', emptyForm)
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState(null)
   const [erro, setErro] = useState('')

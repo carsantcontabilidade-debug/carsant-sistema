@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { buscarColaboradores } from '../lib/colaboradores'
 import { Plus, Wand2, CheckCircle, RefreshCw, Edit2, Trash2, Search, Loader2, X, Save } from 'lucide-react'
 import { format } from 'date-fns'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const OBR_CATALOG = [
   { id: 'das_mei', nome: 'DAS-MEI', dia: 20, tipo: 'declaracao' },
@@ -33,10 +34,12 @@ export default function Tarefas() {
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroResp, setFiltroResp] = useState(isGestor ? '' : profile?.nome || '')
-  const [modalOpen, setModalOpen] = useState(false)
+  // Persistidos (sessionStorage): sair da página e voltar não apaga a
+  // tarefa que estava sendo criada/editada.
+  const [modalOpen, setModalOpen] = usePersistedState('carsant_tarefas_modalOpen', false)
   const [modalGerar, setModalGerar] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editId, setEditId] = useState(null)
+  const [form, setForm] = usePersistedState('carsant_tarefas_form', emptyForm)
+  const [editId, setEditId] = usePersistedState('carsant_tarefas_editId', null)
   const [saving, setSaving] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [genMes, setGenMes] = useState(hoje.getMonth())

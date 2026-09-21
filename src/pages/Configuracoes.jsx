@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SETORES } from '../lib/chat'
 import { Loader2, UserPlus, Download, Mail, Webhook } from 'lucide-react'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const ROLE_LABEL = { gestor: 'Gestor', colaborador: 'Colaborador' }
 
 export default function Configuracoes() {
   const [colaboradores, setColaboradores] = useState([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ nome: '', email: '', role: 'colaborador', setor: '' })
+  // Persistido (sessionStorage): sair da página e voltar não apaga o convite
+  // que estava sendo preenchido.
+  const [form, setForm] = usePersistedState('carsant_configuracoes_form', { nome: '', email: '', role: 'colaborador', setor: '' })
   const [convidando, setConvidando] = useState(false)
   const [mensagem, setMensagem] = useState(null)
   const [salvandoId, setSalvandoId] = useState(null)

@@ -6,6 +6,7 @@ import {
   temAutomacao, portalDeApoio,
 } from '../lib/certidoes'
 import { Loader2, Search, FileText, Zap, ExternalLink } from 'lucide-react'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 function fmtData(d) {
   if (!d) return ''
@@ -17,8 +18,11 @@ export default function Certidoes() {
   const [certidoes, setCertidoes] = useState([])
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null) // { cliente, tipo, atual }
-  const [form, setForm] = useState({ data_emissao: '', data_validade: '', observacoes: '' })
+  // Persistidos (sessionStorage): sair da página e voltar não apaga o que já
+  // tinha sido preenchido — só o arquivo em si precisa ser selecionado de
+  // novo (arquivo escolhido no navegador não pode ser salvo dessa forma).
+  const [modal, setModal] = usePersistedState('carsant_certidoes_modal', null) // { cliente, tipo, atual }
+  const [form, setForm] = usePersistedState('carsant_certidoes_form', { data_emissao: '', data_validade: '', observacoes: '' })
   const [arquivo, setArquivo] = useState(null)
   const [salvando, setSalvando] = useState(false)
   const [emitindo, setEmitindo] = useState(null) // `${clienteId}|${tipo}` em andamento
