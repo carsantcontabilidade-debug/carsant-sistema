@@ -355,7 +355,9 @@ export default function Comunicacao() {
 
   async function enviarWhatsApp() {
     if (!clienteForm?.telefone || !form.mensagem) return;
-    const link = `https://wa.me/55${formatarTelefone(clienteForm.telefone)}?text=${encodeURIComponent(form.mensagem)}`;
+    // web.whatsapp.com/send (em vez de wa.me) pula a página intermediária e
+    // usa a sessão já logada do navegador, indo direto para a conversa.
+    const link = `https://web.whatsapp.com/send?phone=55${formatarTelefone(clienteForm.telefone)}&text=${encodeURIComponent(form.mensagem)}`;
     window.open(link, "whatsapp_web");
     await registrarComunicacao("enviado");
   }
@@ -801,7 +803,7 @@ export default function Comunicacao() {
                 </div>
                 <div className="flex gap-3 mt-6">
                   {comunicacaoAtual.canal === "whatsapp" && comunicacaoAtual.clientes?.telefone && (
-                    <a href={`https://wa.me/55${formatarTelefone(comunicacaoAtual.clientes.telefone)}?text=${encodeURIComponent(comunicacaoAtual.mensagem)}`} target="whatsapp_web" className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600">
+                    <a href={`https://web.whatsapp.com/send?phone=55${formatarTelefone(comunicacaoAtual.clientes.telefone)}&text=${encodeURIComponent(comunicacaoAtual.mensagem)}`} target="whatsapp_web" className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600">
                       📱 Reenviar WhatsApp
                     </a>
                   )}

@@ -769,15 +769,16 @@ export default function Cobrancas() {
     setProcessando(false);
   }
 
-  async function abrirWhatsApp(cob) {
+  async function abrirWhatsApp(cob, { novaAba = false } = {}) {
     const tel = cob.clientes?.telefone?.replace(/\D/g, "");
     if (!tel) return;
 
     // Abre (ou reaproveita) a aba já na hora do clique, antes de qualquer await —
     // se abrirmos só depois de buscar o boleto/nota fiscal, o navegador não trata
     // mais isso como resultado direto do clique e para de reaproveitar a aba nomeada,
-    // criando uma nova a cada envio.
-    const janela = window.open("", "whatsapp_web");
+    // criando uma nova a cada envio. No disparo em lote (novaAba: true) cada
+    // cobrança precisa da sua própria aba, por isso não reaproveita o nome ali.
+    const janela = window.open("", novaAba ? "_blank" : "whatsapp_web");
 
     setErro("");
     setProcessando(true);
@@ -794,11 +795,14 @@ export default function Cobrancas() {
     // embutido — sem formatação, o WhatsApp sublinha o código inteiro como link.
     // Bloco de código (```) evita isso, sem alterar um caractere do conteúdo.
     const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
-    const url = `https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`;
+    // web.whatsapp.com/send (em vez de wa.me) pula a página intermediária
+    // "Abrir app / Continuar para o WhatsApp Web" e usa a sessão já logada
+    // do navegador, indo direto para a conversa com a mensagem preenchida.
+    const url = `https://web.whatsapp.com/send?phone=55${tel}&text=${encodeURIComponent(msg)}`;
     if (janela) {
       janela.location.href = url;
     } else {
-      window.open(url, "whatsapp_web");
+      window.open(url, novaAba ? "_blank" : "whatsapp_web");
     }
   }
 
@@ -934,7 +938,7 @@ export default function Cobrancas() {
     setSucesso("");
     setEnvioProcessando("whatsapp");
     for (const cob of alvos) {
-      await abrirWhatsApp(cob);
+      await abrirWhatsApp(cob, { novaAba: true });
       await new Promise(r => setTimeout(r, 400));
     }
     setEnvioProcessando(null);
