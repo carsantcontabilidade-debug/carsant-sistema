@@ -889,12 +889,20 @@ export default function NfseEmitir() {
               {loteResultadosNotas.length > 0 && (
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-64 overflow-y-auto">
                   {loteResultadosNotas.map((r, i) => (
-                    <div key={i} className="px-3 py-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-gray-800">{r.cliente.nome}</span>
-                      {r.status === 'ok' ? (
-                        <span className="text-green-700">Nº {r.numero}</span>
-                      ) : (
-                        <span className="text-red-600 truncate max-w-xs" title={r.mensagem}>{r.mensagem}</span>
+                    <div key={i} className="px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-800">{r.cliente.nome}</span>
+                        {r.status === 'ok' ? (
+                          <span className="text-green-700">Nº {r.numero}</span>
+                        ) : (
+                          <span className="text-red-600 text-right">Erro</span>
+                        )}
+                      </div>
+                      {/* Antes cortava com "..." e só dava pra ler passando o
+                          mouse (title) — mensagem de erro do WebISS costuma
+                          ser longa e precisa ser lida/copiada por inteiro. */}
+                      {r.status === 'erro' && (
+                        <div className="text-red-600 text-xs mt-1 break-words">{r.mensagem}</div>
                       )}
                     </div>
                   ))}
