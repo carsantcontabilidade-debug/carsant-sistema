@@ -788,7 +788,7 @@ export default function Cobrancas() {
     // embutido — sem formatação, o WhatsApp sublinha o código inteiro como link.
     // Bloco de código (```) evita isso, sem alterar um caractere do conteúdo.
     const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
-    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "whatsapp_web");
   }
 
   async function enviarEmailCobrancaSilencioso(cob) {
