@@ -1245,9 +1245,14 @@ export default function Cobrancas() {
                     </button>
                   )}
                   {cobrancaAtual.clientes?.telefone && cobrancaAtual.status === "gerada" && (
-                    <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
-                      📱 Copiar mensagem do WhatsApp
-                    </button>
+                    <>
+                      <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
+                        📋 Copiar mensagem
+                      </button>
+                      <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
+                        📱 Abrir WhatsApp
+                      </button>
+                    </>
                   )}
                   {cobrancaAtual.clientes?.["email"] && cobrancaAtual.status === "gerada" && (
                     <button onClick={() => abrirEmail(cobrancaAtual)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700">

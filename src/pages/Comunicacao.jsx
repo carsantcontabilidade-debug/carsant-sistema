@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   TEMPLATES,
   CANAIS,
+  formatarTelefone,
 } from "../lib/comunicacao";
 import { SETORES } from "../lib/chat";
 import { sanitizarNomeArquivo } from "../lib/storage";
@@ -352,14 +353,23 @@ export default function Comunicacao() {
     setForm((f) => ({ ...f, mensagem: texto }));
   }
 
-  // Copia a mensagem pronta em vez de abrir aba: o WhatsApp Web não deixa uma
-  // página focar uma aba que ela mesma não abriu, então abrir/reaproveitar aba
-  // sempre acabava criando uma nova quando o usuário já tinha o WhatsApp aberto
-  // por conta própria. Basta colar a mensagem na conversa já aberta.
-  async function enviarWhatsApp() {
+  // Copia a mensagem pronta em vez de abrir aba: útil para quem já mantém o
+  // WhatsApp aberto separadamente, já que nenhuma página consegue focar uma
+  // aba que ela mesma não abriu — abrir/reaproveitar aba sempre acabava
+  // criando uma nova nesse caso. Basta colar a mensagem na conversa já aberta.
+  async function copiarMensagemWhatsApp() {
     if (!clienteForm?.telefone || !form.mensagem) return;
     await navigator.clipboard.writeText(form.mensagem);
     alert(`Mensagem copiada! Cole no WhatsApp de ${clienteForm.nome || "cliente"} (${clienteForm.telefone}).`);
+    await registrarComunicacao("enviado");
+  }
+
+  async function enviarWhatsApp() {
+    if (!clienteForm?.telefone || !form.mensagem) return;
+    // web.whatsapp.com/send (em vez de wa.me) pula a página intermediária e
+    // usa a sessão já logada do navegador, indo direto para a conversa.
+    const link = `https://web.whatsapp.com/send?phone=55${formatarTelefone(clienteForm.telefone)}&text=${encodeURIComponent(form.mensagem)}`;
+    window.open(link, "whatsapp_web");
     await registrarComunicacao("enviado");
   }
 
@@ -804,15 +814,24 @@ export default function Comunicacao() {
                 </div>
                 <div className="flex gap-3 mt-6">
                   {comunicacaoAtual.canal === "whatsapp" && comunicacaoAtual.clientes?.telefone && (
-                    <button
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(comunicacaoAtual.mensagem);
-                        alert(`Mensagem copiada! Cole no WhatsApp de ${comunicacaoAtual.clientes.nome || "cliente"} (${comunicacaoAtual.clientes.telefone}).`);
-                      }}
-                      className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600"
-                    >
-                      📱 Copiar mensagem do WhatsApp
-                    </button>
+                    <>
+                      <button
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(comunicacaoAtual.mensagem);
+                          alert(`Mensagem copiada! Cole no WhatsApp de ${comunicacaoAtual.clientes.nome || "cliente"} (${comunicacaoAtual.clientes.telefone}).`);
+                        }}
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600"
+                      >
+                        📋 Copiar mensagem
+                      </button>
+                      <a
+                        href={`https://web.whatsapp.com/send?phone=55${formatarTelefone(comunicacaoAtual.clientes.telefone)}&text=${encodeURIComponent(comunicacaoAtual.mensagem)}`}
+                        target="whatsapp_web"
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
+                      >
+                        📱 Abrir WhatsApp
+                      </a>
+                    </>
                   )}
                   <button onClick={() => setModalAberto(false)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Fechar</button>
                 </div>
@@ -938,13 +957,22 @@ export default function Comunicacao() {
                 {/* Botões */}
                 <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
                   {form.canal === "whatsapp" && (
-                    <button
-                      onClick={enviarWhatsApp}
-                      disabled={!form.cliente_id || !form.mensagem || !clienteForm?.telefone}
-                      className="flex-1 bg-green-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      📱 Abrir WhatsApp
-                    </button>
+                    <>
+                      <button
+                        onClick={copiarMensagemWhatsApp}
+                        disabled={!form.cliente_id || !form.mensagem || !clienteForm?.telefone}
+                        className="flex-1 bg-green-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        📋 Copiar mensagem
+                      </button>
+                      <button
+                        onClick={enviarWhatsApp}
+                        disabled={!form.cliente_id || !form.mensagem || !clienteForm?.telefone}
+                        className="flex-1 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        📱 Abrir WhatsApp
+                      </button>
+                    </>
                   )}
                   {form.canal === "email" && (
                     <button
