@@ -769,17 +769,7 @@ export default function Cobrancas() {
     setProcessando(false);
   }
 
-  async function abrirWhatsApp(cob, { novaAba = false } = {}) {
-    const tel = cob.clientes?.telefone?.replace(/\D/g, "");
-    if (!tel) return;
-
-    // Abre (ou reaproveita) a aba já na hora do clique, antes de qualquer await —
-    // se abrirmos só depois de buscar o boleto/nota fiscal, o navegador não trata
-    // mais isso como resultado direto do clique e para de reaproveitar a aba nomeada,
-    // criando uma nova a cada envio. No disparo em lote (novaAba: true) cada
-    // cobrança precisa da sua própria aba, por isso não reaproveita o nome ali.
-    const janela = window.open("", novaAba ? "_blank" : "whatsapp_web");
-
+  async function montarMensagemWhatsApp(cob) {
     setErro("");
     setProcessando(true);
     let linkBoleto = cob.link_boleto;
@@ -794,7 +784,31 @@ export default function Cobrancas() {
     // Pix Copia e Cola costuma ter um trecho parecido com URL (ex: pix.bcb.gov.br)
     // embutido — sem formatação, o WhatsApp sublinha o código inteiro como link.
     // Bloco de código (```) evita isso, sem alterar um caractere do conteúdo.
-    const msg = `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
+    return `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
+  }
+
+  // Envio individual: copia a mensagem pronta pra área de transferência, sem
+  // abrir nenhuma aba — o WhatsApp Web não deixa uma página focar uma aba que
+  // ela mesma não abriu, então abrir/reaproveitar aba sempre acabava criando
+  // uma nova quando o usuário já tinha o WhatsApp aberto por conta própria.
+  // Basta colar a mensagem na conversa já aberta.
+  async function copiarMensagemWhatsApp(cob) {
+    const tel = cob.clientes?.telefone;
+    if (!tel) return;
+    const msg = await montarMensagemWhatsApp(cob);
+    await navigator.clipboard.writeText(msg);
+    setSucesso(`Mensagem copiada! Cole no WhatsApp de ${cob.clientes?.nome || "cliente"} (${tel}).`);
+    setTimeout(() => setSucesso(""), 6000);
+  }
+
+  // Disparo em lote: aqui cada cobrança é um contato diferente, então não há
+  // como reaproveitar uma única aba — mantém o comportamento de abrir uma aba
+  // por cobrança.
+  async function abrirWhatsApp(cob) {
+    const tel = cob.clientes?.telefone?.replace(/\D/g, "");
+    if (!tel) return;
+    const janela = window.open("", "_blank");
+    const msg = await montarMensagemWhatsApp(cob);
     // web.whatsapp.com/send (em vez de wa.me) pula a página intermediária
     // "Abrir app / Continuar para o WhatsApp Web" e usa a sessão já logada
     // do navegador, indo direto para a conversa com a mensagem preenchida.
@@ -802,7 +816,7 @@ export default function Cobrancas() {
     if (janela) {
       janela.location.href = url;
     } else {
-      window.open(url, novaAba ? "_blank" : "whatsapp_web");
+      window.open(url, "_blank");
     }
   }
 
@@ -938,7 +952,7 @@ export default function Cobrancas() {
     setSucesso("");
     setEnvioProcessando("whatsapp");
     for (const cob of alvos) {
-      await abrirWhatsApp(cob, { novaAba: true });
+      await abrirWhatsApp(cob);
       await new Promise(r => setTimeout(r, 400));
     }
     setEnvioProcessando(null);
@@ -1231,8 +1245,8 @@ export default function Cobrancas() {
                     </button>
                   )}
                   {cobrancaAtual.clientes?.telefone && cobrancaAtual.status === "gerada" && (
-                    <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
-                      📱 Enviar WhatsApp
+                    <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
+                      📱 Copiar mensagem do WhatsApp
                     </button>
                   )}
                   {cobrancaAtual.clientes?.["email"] && cobrancaAtual.status === "gerada" && (
