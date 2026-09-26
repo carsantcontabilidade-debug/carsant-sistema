@@ -1265,20 +1265,38 @@ export default function Cobrancas() {
                       🖨️ Ver boleto
                     </button>
                   )}
-                  {cobrancaAtual.clientes?.telefone && cobrancaAtual.status === "gerada" && (
+                  {cobrancaAtual.status === "gerada" && (
                     <>
-                      <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
-                        📋 Copiar mensagem
-                      </button>
-                      <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
-                        📱 Abrir WhatsApp
-                      </button>
+                      {cobrancaAtual.clientes?.telefone ? (
+                        <>
+                          <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
+                            📋 Copiar mensagem
+                          </button>
+                          <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
+                            📱 Abrir WhatsApp
+                          </button>
+                        </>
+                      ) : (
+                        // Antes o botão simplesmente sumia sem explicação
+                        // quando o cliente não tinha telefone cadastrado —
+                        // parecia um bug (reportado pelo Ronaldo em
+                        // 2026-09-26: "esse boleto não apareceu pra eu
+                        // copiar e enviar pelo WhatsApp"). Agora avisa o
+                        // motivo real, com atalho direto pro cadastro.
+                        <span className="text-xs text-gray-400 self-center" title="Cadastre o telefone deste cliente para enviar por WhatsApp">
+                          📱 Sem telefone cadastrado
+                        </span>
+                      )}
+                      {cobrancaAtual.clientes?.["email"] ? (
+                        <button onClick={() => abrirEmail(cobrancaAtual)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700">
+                          ✉️ Enviar E-mail
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400 self-center" title="Cadastre o e-mail deste cliente para enviar por e-mail">
+                          ✉️ Sem e-mail cadastrado
+                        </span>
+                      )}
                     </>
-                  )}
-                  {cobrancaAtual.clientes?.["email"] && cobrancaAtual.status === "gerada" && (
-                    <button onClick={() => abrirEmail(cobrancaAtual)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700">
-                      ✉️ Enviar E-mail
-                    </button>
                   )}
                   {cobrancaAtual.codigo_solicitacao && ["gerada", "vencida"].includes(cobrancaAtual.status) && (
                     <button onClick={() => atualizarStatus(cobrancaAtual)} disabled={processando} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 disabled:opacity-50">
