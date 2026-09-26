@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2, Search, AlertTriangle, Percent, Wallet } from 'lucide-react'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -30,12 +31,16 @@ export default function InadimplenciaTotal() {
   const [periodoInicio, setPeriodoInicio] = useState({ mes: 0, ano: anoAtual - 1 })
   const [periodoFim, setPeriodoFim] = useState({ mes: hoje.getMonth(), ano: anoAtual })
   const [saldos, setSaldos] = useState([])
-  const [modalDetalhe, setModalDetalhe] = useState(null) // cliente
-  const [modalDesconto, setModalDesconto] = useState(null) // cliente
-  const [formDesconto, setFormDesconto] = useState({ valor: '', motivo: '' })
+  // Persistidos (sessionStorage): sair da página pra conferir algo em outra
+  // tela e voltar não apaga o desconto/ajuste de saldo que estava sendo
+  // preenchido (mesmo problema relatado pelo Ronaldo em Cobrancas.jsx, em
+  // 2026-09-26).
+  const [modalDetalhe, setModalDetalhe] = usePersistedState('carsant_inadimplencia_modalDetalhe', null) // cliente
+  const [modalDesconto, setModalDesconto] = usePersistedState('carsant_inadimplencia_modalDesconto', null) // cliente
+  const [formDesconto, setFormDesconto] = usePersistedState('carsant_inadimplencia_formDesconto', { valor: '', motivo: '' })
   const [salvandoDesconto, setSalvandoDesconto] = useState(false)
-  const [modalSaldo, setModalSaldo] = useState(null) // cliente
-  const [formSaldo, setFormSaldo] = useState({ tipo: '', valor: '', descricao: '' })
+  const [modalSaldo, setModalSaldo] = usePersistedState('carsant_inadimplencia_modalSaldo', null) // cliente
+  const [formSaldo, setFormSaldo] = usePersistedState('carsant_inadimplencia_formSaldo', { tipo: '', valor: '', descricao: '' })
   const [salvandoSaldo, setSalvandoSaldo] = useState(false)
 
   useEffect(() => { fetchDados() }, [])

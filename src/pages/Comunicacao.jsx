@@ -36,9 +36,14 @@ export default function Comunicacao() {
   const [clienteSelecionado, setClienteSelecionado] = useState(null);
   const [busca, setBusca] = useState("");
   const [filtroCanal, setFiltroCanal] = useState("todos");
-  const [modalAberto, setModalAberto] = useState(false);
-  const [modalTipo, setModalTipo] = useState("nova");
-  const [comunicacaoAtual, setComunicacaoAtual] = useState(null);
+  // Também persistidos (mesmo motivo do form/clienteForm abaixo): sem isso,
+  // o rascunho da mensagem sobrevivia a sair-e-voltar da página, mas o modal
+  // que o mostrava fechava sozinho — na prática o cadastro em andamento
+  // "sumia" da tela mesmo com o rascunho salvo por baixo (mesmo problema
+  // relatado pelo Ronaldo em Cobrancas.jsx, em 2026-09-26).
+  const [modalAberto, setModalAberto] = usePersistedState("carsant_comunicacao_modalAberto", false);
+  const [modalTipo, setModalTipo] = usePersistedState("carsant_comunicacao_modalTipo", "nova");
+  const [comunicacaoAtual, setComunicacaoAtual] = usePersistedState("carsant_comunicacao_comunicacaoAtual", null);
   const [loadingClientes, setLoadingClientes] = useState(true);
   const [loadingComms, setLoadingComms] = useState(false);
 

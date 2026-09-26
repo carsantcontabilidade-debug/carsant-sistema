@@ -83,8 +83,13 @@ export default function NfseEmitir() {
   const [exportandoLote, setExportandoLote] = useState(false)
   const [gerandoRelatorioPdf, setGerandoRelatorioPdf] = useState(false)
   const [cancelandoId, setCancelandoId] = useState(null)
-  const [notaSubstituir, setNotaSubstituir] = useState(null) // nota sendo substituída
-  const [formSubstituir, setFormSubstituir] = useState({
+  // Persistidos (sessionStorage), mesmo motivo do `form` acima: o modal de
+  // substituir uma NFS-e não sobrevivia a sair-e-voltar da página (o
+  // usePersistedState do form principal já cobria isso, mas este modal
+  // secundário tinha ficado de fora — mesmo problema relatado pelo Ronaldo
+  // em Cobrancas.jsx em 2026-09-26).
+  const [notaSubstituir, setNotaSubstituir] = usePersistedState('carsant_nfseEmitir_notaSubstituir', null) // nota sendo substituída
+  const [formSubstituir, setFormSubstituir] = usePersistedState('carsant_nfseEmitir_formSubstituir', {
     valorServicos: '', discriminacao: '', competencia: '',
     tomadorNome: '', tomadorCnpj: '', tomadorEmail: '', tomadorTelefone: '',
     tomadorLogradouro: '', tomadorNumero: '', tomadorComplemento: '', tomadorBairro: '', tomadorCep: '', tomadorUf: '',

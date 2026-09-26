@@ -98,9 +98,16 @@ export default function Cobrancas() {
   const [loadingClientes, setLoadingClientes] = useState(clientes.length === 0);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
   const primeiraCargaCobrancas = useRef(true);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [modalTipo, setModalTipo] = useState("nova"); // nova | detalhe
-  const [cobrancaAtual, setCobrancaAtual] = useState(null);
+  // Também persistidos: sem isso, o rascunho do formulário (form/clienteForm,
+  // já persistidos abaixo) sobrevivia a sair-e-voltar da página, mas o modal
+  // que o mostrava fechava sozinho — na prática o cadastro em andamento
+  // "sumia" (o usuário via só a lista, sem sinal nenhum do rascunho salvo),
+  // e reabrir "+ Nova cobrança" ainda por cima zerava esse rascunho de novo.
+  // Relatado pelo Ronaldo em 2026-09-26 (trocou de tela só pra ver um
+  // telefone e o cadastro em andamento tinha "voltado" pra tela anterior).
+  const [modalAberto, setModalAberto] = usePersistedState("carsant_cobrancas_modalAberto", false);
+  const [modalTipo, setModalTipo] = usePersistedState("carsant_cobrancas_modalTipo", "nova"); // nova | detalhe
+  const [cobrancaAtual, setCobrancaAtual] = usePersistedState("carsant_cobrancas_cobrancaAtual", null);
   const [processando, setProcessando] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
