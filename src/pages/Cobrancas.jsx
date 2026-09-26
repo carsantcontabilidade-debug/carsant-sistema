@@ -814,11 +814,15 @@ export default function Cobrancas() {
   // uma nova quando o usuário já tinha o WhatsApp aberto por conta própria.
   // Basta colar a mensagem na conversa já aberta.
   async function copiarMensagemWhatsApp(cob) {
+    // Não exige telefone cadastrado — útil também pra colar em algum canal
+    // por fora do sistema quando o cliente não tem contato no cadastro
+    // (pedido do Ronaldo em 2026-09-26).
     const tel = cob.clientes?.telefone;
-    if (!tel) return;
     const msg = await montarMensagemWhatsApp(cob);
     await navigator.clipboard.writeText(msg);
-    setSucesso(`Mensagem copiada! Cole no WhatsApp de ${cob.clientes?.nome || "cliente"} (${tel}).`);
+    setSucesso(tel
+      ? `Mensagem copiada! Cole no WhatsApp de ${cob.clientes?.nome || "cliente"} (${tel}).`
+      : `Mensagem copiada! Cole onde for enviar pra ${cob.clientes?.nome || "o cliente"} (sem telefone cadastrado).`);
     setTimeout(() => setSucesso(""), 6000);
   }
 
@@ -1267,15 +1271,17 @@ export default function Cobrancas() {
                   )}
                   {cobrancaAtual.status === "gerada" && (
                     <>
+                      {/* "Copiar mensagem" não depende de telefone/e-mail
+                          cadastrado — o Ronaldo pode colar em qualquer canal
+                          por fora do sistema mesmo sem esses dados no
+                          cadastro (pedido dele em 2026-09-26). */}
+                      <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
+                        📋 Copiar mensagem
+                      </button>
                       {cobrancaAtual.clientes?.telefone ? (
-                        <>
-                          <button onClick={() => copiarMensagemWhatsApp(cobrancaAtual)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-600">
-                            📋 Copiar mensagem
-                          </button>
-                          <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
-                            📱 Abrir WhatsApp
-                          </button>
-                        </>
+                        <button onClick={() => abrirWhatsApp(cobrancaAtual)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
+                          📱 Abrir WhatsApp
+                        </button>
                       ) : (
                         // Antes o botão simplesmente sumia sem explicação
                         // quando o cliente não tinha telefone cadastrado —
@@ -1283,7 +1289,7 @@ export default function Cobrancas() {
                         // 2026-09-26: "esse boleto não apareceu pra eu
                         // copiar e enviar pelo WhatsApp"). Agora avisa o
                         // motivo real, com atalho direto pro cadastro.
-                        <span className="text-xs text-gray-400 self-center" title="Cadastre o telefone deste cliente para enviar por WhatsApp">
+                        <span className="text-xs text-gray-400 self-center" title="Cadastre o telefone deste cliente para abrir a conversa direto pelo sistema">
                           📱 Sem telefone cadastrado
                         </span>
                       )}
