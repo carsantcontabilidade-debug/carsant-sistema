@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useIdleLogout, registrarLoginComoAtividade } from '../hooks/useIdleLogout'
@@ -13,25 +13,42 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    // Verifica sessão atual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else setLoading(false)
-    })
+  // Id do usuário já tratado. O Supabase reenvia "SIGNED_IN" com a MESMA
+  // sessão toda vez que a aba volta a ficar visível (hidden -> visible, em
+  // _recoverAndRefresh). Tratar isso como um login novo ligava o "Carregando"
+  // do PrivateRoute, que desmonta a página inteira — e tudo que não estava
+  // salvo (cliente selecionado, filtros, busca...) se perdia a cada troca de
+  // aba, em qualquer tela (relatado pelo Ronaldo em 2026-10-08).
+  const usuarioAtualRef = useRef(null)
 
-    // Escuta mudanças de auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+  useEffect(() => {
+    function aplicarSessao(session) {
+      const novoId = session?.user?.id ?? null
+      if (novoId === usuarioAtualRef.current) return
+      usuarioAtualRef.current = novoId
       setUser(session?.user ?? null)
-      if (session?.user) {
+      if (novoId) {
         // loading precisa voltar pra true aqui: sem isso, há uma janela entre
         // "user" já preenchido e "profile" ainda não buscado em que o
         // PrivateRoute lê profile=null (valor antigo) e manda pro Portal do
         // Cliente por engano, mesmo sendo um login de gestor/colaborador.
         setLoading(true)
-        fetchProfile(session.user.id)
-      } else { setProfile(null); setLoading(false) }
+        fetchProfile(novoId)
+      } else {
+        setProfile(null)
+        setLoading(false)
+      }
+    }
+
+    // Verifica sessão atual
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) aplicarSessao(session)
+      else setLoading(false)
+    })
+
+    // Escuta mudanças de auth (login, logout, outro usuário)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      aplicarSessao(session)
     })
 
     return () => subscription.unsubscribe()

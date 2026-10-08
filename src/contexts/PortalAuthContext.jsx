@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useIdleLogout, registrarLoginComoAtividade } from '../hooks/useIdleLogout'
@@ -15,19 +15,33 @@ export function PortalAuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [contadores, setContadores] = useState({ honorarios: 0, documentos: 0, comunicacao: 0, certidoes: 0 })
 
+  // Mesmo motivo do AuthContext: o Supabase reenvia SIGNED_IN com a mesma
+  // sessão sempre que a aba volta a ficar visível — não pode virar um
+  // "login novo" que remonta a página inteira.
+  const usuarioAtualRef = useRef(null)
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    function aplicarSessao(session) {
+      const novoId = session?.user?.id ?? null
+      if (novoId === usuarioAtualRef.current) return
+      usuarioAtualRef.current = novoId
       setUser(session?.user ?? null)
-      if (session?.user) fetchCliente(session.user.id)
+      if (novoId) {
+        setLoading(true)
+        fetchCliente(novoId)
+      } else {
+        setCliente(null)
+        setLoading(false)
+      }
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) aplicarSessao(session)
       else setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        setLoading(true)
-        fetchCliente(session.user.id)
-      } else { setCliente(null); setLoading(false) }
+      aplicarSessao(session)
     })
 
     return () => subscription.unsubscribe()
