@@ -48,7 +48,7 @@ export default function InadimplenciaTotal() {
   async function fetchDados() {
     setLoading(true)
     const [{ data: c }, { data: p }, { data: d }, { data: s }, { data: cb }] = await Promise.all([
-      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio, created_at').gt('valor_honorario', 0).order('nome'),
+      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio, created_at, tipo').gt('valor_honorario', 0).order('nome'),
       supabase.from('pagamentos_honorarios').select('cliente_id, mes, ano, pago, isento, oculto'),
       supabase.from('descontos_honorarios').select('*').order('created_at', { ascending: false }),
       supabase.from('saldos_migrados').select('*').order('created_at', { ascending: false }),
@@ -57,7 +57,9 @@ export default function InadimplenciaTotal() {
       // continuava contado em atraso (mesma lacuna corrigida em Honorarios.jsx).
       supabase.from('cobrancas').select('cliente_id, mes_referencia').eq('tipo', 'honorario').eq('status', 'paga'),
     ])
-    setClientes(c || [])
+    // "Temporário" (serviço avulso/campanha) não tem mensalidade — não entra
+    // na inadimplência mensal.
+    setClientes((c || []).filter(x => x.tipo !== 'temporario'))
     // Converte "YYYY-MM" em { mes (0-11), ano } e mescla como mês pago.
     const pagosPorCobranca = (cb || [])
       .filter(x => /^\d{4}-\d{2}$/.test(x.mes_referencia || ''))

@@ -23,7 +23,8 @@ export default function Dashboard() {
 
   async function carregarDados() {
     setLoading(true)
-    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes] = await Promise.all([
+    const mesReferencia = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`
+    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('tarefas').select('*'),
@@ -32,6 +33,8 @@ export default function Dashboard() {
       supabase.from('pagamentos_honorarios').select('*').eq('mes', mesAtual).eq('ano', anoAtual),
       supabase.from('chat_conversas').select('id, assunto, updated_at, ultimo_origem, staff_lido_em, clientes(nome)').eq('status', 'aberta'),
       supabase.from('certidoes').select('cliente_id, tipo, data_validade, created_at'),
+      // Honorário pago via Cobranças não gera registro em pagamentos_honorarios.
+      supabase.from('cobrancas').select('cliente_id').eq('tipo', 'honorario').eq('status', 'paga').eq('mes_referencia', mesReferencia),
     ])
     setData({
       clientes: clientes.data || [],
@@ -42,6 +45,7 @@ export default function Dashboard() {
       pagamentos: pagamentos.data || [],
       conversas: conversas.data || [],
       certidoes: certidoes.data || [],
+      cobrancasPagas: cobrancasPagas.data || [],
     })
     setLoading(false)
   }
@@ -52,7 +56,7 @@ export default function Dashboard() {
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes } = data
+  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas } = data
   const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
   const hojeStr = format(hoje, 'yyyy-MM-dd')
   const hoje7Str = format(hoje7, 'yyyy-MM-dd')
@@ -74,10 +78,13 @@ export default function Dashboard() {
   })
 
   // KPIs
-  const totalHonorarios = clientes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const inadimplentes = clientes.filter(c => {
+  // Cliente "Temporário" (serviço avulso/campanha) não tem mensalidade — fora
+  // dos totais e da inadimplência mensal.
+  const clientesRecorrentes = clientes.filter(c => c.tipo !== 'temporario')
+  const totalHonorarios = clientesRecorrentes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const inadimplentes = clientesRecorrentes.filter(c => {
     if (!(c.valor_honorario > 0)) return false
-    const pago = pagamentos.find(p => p.cliente_id === c.id)?.pago
+    const pago = pagamentos.find(p => p.cliente_id === c.id)?.pago || cobrancasPagas.some(x => x.cliente_id === c.id)
     if (pago) return false
     const venc = new Date(anoAtual, mesAtual, c.dia_vencimento || 10)
     return hoje > venc

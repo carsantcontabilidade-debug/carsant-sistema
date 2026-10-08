@@ -37,7 +37,9 @@ export default function Honorarios() {
       // duplicar escrita nas duas tabelas.
       supabase.from('cobrancas').select('cliente_id, paga_em').eq('tipo', 'honorario').eq('mes_referencia', mesReferencia).eq('status', 'paga'),
     ])
-    setClientes(c || [])
+    // "Temporário" (serviço avulso/campanha) não tem mensalidade — fica fora
+    // desta lista e dos totais.
+    setClientes((c || []).filter(x => x.tipo !== 'temporario'))
     setPagamentos(p || [])
     const porCliente = {}
     for (const cob of cb || []) porCliente[cob.cliente_id] = cob.paga_em
