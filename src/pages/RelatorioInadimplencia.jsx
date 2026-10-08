@@ -51,24 +51,53 @@ export default function RelatorioInadimplencia() {
     try {
       const { data: clientes, error: errCli } = await supabase
         .from("clientes")
-        .select("id, nome, regime, valor_honorario, dia_vencimento, tipo")
+        .select("id, nome, regime, valor_honorario, dia_vencimento, tipo, honorario_inicio")
         .order("nome");
 
       if (errCli) throw errCli;
 
       const { data: pagamentos, error: errPag } = await supabase
         .from("pagamentos_honorarios")
-        .select("cliente_id, pago, data_pagamento")
+        .select("cliente_id, pago, isento, oculto, data_pagamento")
         .eq("mes", mes)
         .eq("ano", ano);
 
       if (errPag) throw errPag;
 
+      // Honorário pago via Cobranças (Inter/baixa manual) não gera registro em
+      // pagamentos_honorarios — sem isto o relatório listava como pendente/em
+      // atraso quem já tinha pago (mesma lacuna corrigida em Honorarios.jsx).
+      const mesReferencia = `${ano}-${String(mes + 1).padStart(2, "0")}`;
+      const { data: cobrancasPagas, error: errCob } = await supabase
+        .from("cobrancas")
+        .select("cliente_id, paga_em")
+        .eq("tipo", "honorario")
+        .eq("status", "paga")
+        .eq("mes_referencia", mesReferencia);
+
+      if (errCob) throw errCob;
+
       const pagMap = {};
       pagamentos?.forEach((p) => { pagMap[p.cliente_id] = p; });
+      const cobMap = {};
+      cobrancasPagas?.forEach((c) => { cobMap[c.cliente_id] = c; });
 
-      const rows = clientes.map((c) => {
-        const pag = pagMap[c.id] || null;
+      // Mesmas regras de Honorarios.jsx: só quem tem mensalidade (valor > 0 e
+      // não "Temporário"), que já tinha começado a ser cobrado no mês, e que
+      // não foi isentado/ocultado.
+      const anoMesSelecionado = ano * 12 + mes;
+      const elegiveis = clientes.filter((c) => {
+        if (!(c.valor_honorario > 0) || c.tipo === "temporario") return false;
+        if (c.honorario_inicio) {
+          const ini = new Date(`${c.honorario_inicio}T00:00:00`);
+          if (anoMesSelecionado < ini.getFullYear() * 12 + ini.getMonth()) return false;
+        }
+        const reg = pagMap[c.id];
+        return !(reg?.oculto || reg?.isento);
+      });
+
+      const rows = elegiveis.map((c) => {
+        const pag = pagMap[c.id]?.pago ? pagMap[c.id] : (cobMap[c.id] ? { pago: true, data_pagamento: cobMap[c.id].paga_em?.slice(0, 10) } : null);
         const statusKey = getStatusKey(pag?.pago, c.dia_vencimento, mes, ano);
         return {
           nome: c.nome,
