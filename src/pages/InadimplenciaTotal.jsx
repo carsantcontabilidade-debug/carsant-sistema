@@ -47,14 +47,22 @@ export default function InadimplenciaTotal() {
 
   async function fetchDados() {
     setLoading(true)
-    const [{ data: c }, { data: p }, { data: d }, { data: s }] = await Promise.all([
-      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio').gt('valor_honorario', 0).order('nome'),
+    const [{ data: c }, { data: p }, { data: d }, { data: s }, { data: cb }] = await Promise.all([
+      supabase.from('clientes').select('id, nome, valor_honorario, dia_vencimento, honorario_inicio, created_at').gt('valor_honorario', 0).order('nome'),
       supabase.from('pagamentos_honorarios').select('cliente_id, mes, ano, pago, isento, oculto'),
       supabase.from('descontos_honorarios').select('*').order('created_at', { ascending: false }),
       supabase.from('saldos_migrados').select('*').order('created_at', { ascending: false }),
+      // Honorário pago via Cobranças (boleto/Pix ou baixa manual lá) não gera
+      // registro em pagamentos_honorarios — sem isto o cliente que já pagou
+      // continuava contado em atraso (mesma lacuna corrigida em Honorarios.jsx).
+      supabase.from('cobrancas').select('cliente_id, mes_referencia').eq('tipo', 'honorario').eq('status', 'paga'),
     ])
     setClientes(c || [])
-    setPagamentos(p || [])
+    // Converte "YYYY-MM" em { mes (0-11), ano } e mescla como mês pago.
+    const pagosPorCobranca = (cb || [])
+      .filter(x => /^\d{4}-\d{2}$/.test(x.mes_referencia || ''))
+      .map(x => ({ cliente_id: x.cliente_id, ano: Number(x.mes_referencia.slice(0, 4)), mes: Number(x.mes_referencia.slice(5, 7)) - 1, pago: true }))
+    setPagamentos([...(p || []), ...pagosPorCobranca])
     setDescontos(d || [])
     setSaldos(s || [])
     setLoading(false)
@@ -74,7 +82,13 @@ export default function InadimplenciaTotal() {
   }
 
   function calcularCliente(cliente) {
-    const inicioCliente = cliente.honorario_inicio ? new Date(`${cliente.honorario_inicio}T00:00:00`) : null
+    // Sem "início do honorário" cadastrado, conta a partir do mês em que o
+    // cliente entrou no sistema — antes contava desde o começo do período
+    // (21 meses de atraso pra cliente novo, ex.: R$ 168.000 numa campanha de
+    // 2026). Dívida anterior à entrada vai em "Saldo migrado".
+    const inicioCliente = cliente.honorario_inicio
+      ? new Date(`${cliente.honorario_inicio}T00:00:00`)
+      : (cliente.created_at ? new Date(cliente.created_at) : null)
     const inicioEfetivo = inicioCliente && anoMes(inicioCliente.getFullYear(), inicioCliente.getMonth()) > anoMes(periodoInicio.ano, periodoInicio.mes)
       ? { ano: inicioCliente.getFullYear(), mes: inicioCliente.getMonth() }
       : periodoInicio
