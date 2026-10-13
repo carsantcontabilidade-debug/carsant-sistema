@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { enviarEmailTransacional } from './_mailer.js';
+import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 
-// Remetente exibido ao cliente. Enquanto atendimento@ não estiver cadastrado
-// como "Enviar e-mail como" no Gmail da CARSANT, o Gmail troca pelo próprio
-// endereço — a resposta do cliente vai pro atendimento@ de qualquer forma
-// (replyTo).
+// Remetente exibido ao cliente: atendimento@ está cadastrado como "Enviar
+// e-mail como" no Gmail da CARSANT (2026-10-08), então o Gmail mantém esse
+// endereço; replyTo garante que a resposta do cliente volte pra ele.
 const EMAIL_ATENDIMENTO = 'atendimento@carsantcontabilidade.com.br';
 
 // Envia e-mail em nome da CARSANT via SMTP próprio — usado por telas
@@ -35,7 +35,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Sessão inválida.' });
   }
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { data: perfil } = await admin.from('profiles').select('role').eq('id', userData.user.id).single();
+  const { perfil, falha } = await buscarPerfil(admin, userData.user.id);
+  if (falha) return res.status(503).json({ error: ERRO_VERIFICAR_PERMISSAO });
   if (!perfil) {
     return res.status(403).json({ error: 'Apenas a equipe pode enviar e-mail pelo sistema.' });
   }

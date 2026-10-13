@@ -5,6 +5,7 @@ import {
   montarSubstituirNfseEnvio, enviarSubstituirNfse,
 } from './_webiss-nfse.js';
 import { baixarDanfseOficialPdf, buscarPdfNfseOficialViaRenderizacao } from './_webiss-portal.js';
+import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 
 // Emite/cancela/substitui uma NFS-e via WebISS. Só um gestor autenticado
 // pode chamar. Dispatcha por req.body.acao ('emitir' por padrão, 'cancelar'
@@ -39,7 +40,8 @@ export default async function handler(req, res) {
   }
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { data: perfil } = await admin.from('profiles').select('role').eq('id', userData.user.id).single();
+  const { perfil, falha } = await buscarPerfil(admin, userData.user.id);
+  if (falha) return res.status(503).json({ error: ERRO_VERIFICAR_PERMISSAO });
   if (perfil?.role !== 'gestor') {
     return res.status(403).json({ error: 'Apenas o gestor pode emitir, cancelar ou substituir NFS-e.' });
   }

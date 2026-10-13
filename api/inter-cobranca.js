@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { interRequest, autenticar, configurarWebhookCobranca } from './_inter.js';
+import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
@@ -26,7 +27,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Sessão inválida.' });
   }
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { data: perfil } = await admin.from('profiles').select('role').eq('id', userData.user.id).single();
+  const { perfil, falha } = await buscarPerfil(admin, userData.user.id);
+  if (falha) return res.status(503).json({ error: ERRO_VERIFICAR_PERMISSAO });
   if (perfil?.role !== 'gestor') {
     return res.status(403).json({ error: 'Apenas o gestor pode gerenciar cobranças no Banco Inter.' });
   }
