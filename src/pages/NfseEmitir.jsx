@@ -266,10 +266,17 @@ export default function NfseEmitir() {
     }
   }
 
+  // Busca por nome (sem acento/maiúscula) OU por CPF/CNPJ. Antes só olhava
+  // os dígitos: digitar um nome virava filtro vazio e mostrava todas as
+  // notas (relatado pelo Ronaldo em 2026-10-14).
+  const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   const notasFiltradas = notas.filter((n) => {
-    if (!filtroCnpj) return true
-    const alvo = filtroCnpj.replace(/\D/g, '')
-    return (n.clientes?.cnpj || '').replace(/\D/g, '').includes(alvo)
+    const busca = filtroCnpj.trim()
+    if (!busca) return true
+    const digitos = busca.replace(/\D/g, '')
+    const porCnpj = digitos !== '' && (n.clientes?.cnpj || '').replace(/\D/g, '').includes(digitos)
+    const porNome = semAcento(n.clientes?.nome).includes(semAcento(busca))
+    return porCnpj || porNome
   })
 
   function baixarXmlIndividual(nota) {
@@ -669,12 +676,12 @@ export default function NfseEmitir() {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">CPF/CNPJ do tomador</label>
+              <label className="form-label">Cliente ou CPF/CNPJ</label>
               <input
                 className="input"
                 value={filtroCnpj}
                 onChange={(e) => setFiltroCnpj(e.target.value)}
-                placeholder="Filtrar por CPF ou CNPJ"
+                placeholder="Nome, CPF ou CNPJ"
               />
             </div>
           </div>
