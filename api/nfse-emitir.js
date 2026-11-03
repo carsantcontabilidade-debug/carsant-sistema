@@ -8,12 +8,16 @@ import { baixarDanfseOficialPdf, buscarPdfNfseOficialViaRenderizacao } from './_
 import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 import * as nacional from './_nfse-nacional.js';
 
-// Emissor das notas NOVAS: o Emissor Nacional da NFS-e (obrigatório para as
-// empresas do Simples Nacional desde 01/11/2026). Notas já emitidas pelo
-// WebISS continuam sendo canceladas/substituídas/baixadas pelo WebISS — a
-// série da DPS (nacional.SERIE_NACIONAL) diz de qual emissor é cada nota.
-// NFSE_PROVEDOR=webiss na Vercel volta a emitir pelo WebISS (rollback).
-const provedorDeEmissao = () => (process.env.NFSE_PROVEDOR === 'webiss' ? 'webiss' : 'nacional');
+// Emissor das notas NOVAS. Padrão: WebISS (sistema do município, que já
+// compartilha as notas com o ambiente nacional). O Emissor Nacional da NFS-e
+// fica pronto, mas desligado: consultado em 03/11/2026, o convênio de Feira de
+// Santana (2910800) está com aderenteAmbienteNacional=1 e
+// aderenteEmissorNacional=0 — o município NÃO habilitou o Emissor Público
+// Nacional, então a API recusa a emissão (E0039). Quando o município aderir
+// (o botão "Diagnóstico" em Notas Fiscais mostra isso), basta criar
+// NFSE_PROVEDOR=nacional na Vercel. A série da DPS (nacional.SERIE_NACIONAL)
+// diz de qual emissor é cada nota já salva.
+const provedorDeEmissao = () => (process.env.NFSE_PROVEDOR === 'nacional' ? 'nacional' : 'webiss');
 const ehNotaNacional = (nota) => String(nota?.rps_serie) === nacional.SERIE_NACIONAL;
 
 // Emite/cancela/substitui uma NFS-e (Emissor Nacional ou WebISS, ver acima). Só um gestor autenticado

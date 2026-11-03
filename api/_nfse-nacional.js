@@ -1,7 +1,7 @@
 // Integração com o Emissor Nacional da NFS-e (Sistema Nacional NFS-e / Sefin
-// Nacional) — substitui o WebISS (_webiss-nfse.js) na emissão das notas da
-// CARSANT, já que as empresas do Simples Nacional passaram a ser obrigadas a
-// emitir pelo padrão nacional a partir de 01/11/2026.
+// Nacional). DESLIGADA por padrão (ver provedorDeEmissao em nfse-emitir.js):
+// em 03/11/2026 o convênio de Feira de Santana tem aderenteEmissorNacional=0,
+// então a API recusa a emissão. Fica pronta para quando o município aderir.
 //
 // Contrato (documentação oficial em gov.br/nfse, "Manual dos Contribuintes —
 // Emissor Público API", e leiaute DPS v1.01):
