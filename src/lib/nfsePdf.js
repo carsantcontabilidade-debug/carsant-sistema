@@ -228,7 +228,7 @@ async function montarHtmlDanfse(nota) {
        <tr><td style="${TD} width:25%; background:#f3f4f6; font-size:9px; font-weight:bold; vertical-align:middle;" rowspan="2">${e(titulo)}</td>
        ${sub.map(celula).join('')}</tr>
      </table>
-     <table style="width:100%; border-collapse:collapse;">${linhas.map(linha).join('')}</table>`
+     <table style="width:100%; border-collapse:collapse; table-layout:fixed;">${linhas.map(linha).join('')}</table>`
   const faixa = (texto) => `<div style="border-top:1px solid #000; text-align:center; font-size:8.5px; padding:1px 0;">${e(texto)}</div>`
 
   const regime = d.opSimpNac === '3' ? 'Optante - Microempresa ou Empresa de Pequeno Porte' : d.opSimpNac === '2' ? 'Optante - Microempreendedor Individual (MEI)' : 'Não Optante'
