@@ -243,7 +243,7 @@ async function montarHtmlDanfse(nota) {
   const p = d.prestador
 
   return `
-    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:640px; border:1px solid #000; box-sizing:border-box;">
+    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:690px; min-height:1000px; display:flex; flex-direction:column; border:1px solid #000; box-sizing:border-box;">
       <table style="width:100%; border-collapse:collapse;"><tr>
         <td style="${TD} width:30%; vertical-align:middle;"><span style="font-size:26px; font-weight:bold; color:#0b6fb8;">NFS</span><span style="font-size:26px; font-weight:bold; color:#16a34a;">e</span><br/><span style="font-size:8px; color:#374151;">Nota Fiscal de Serviço eletrônica</span></td>
         <td style="${TD} width:40%; text-align:center; vertical-align:middle; font-weight:bold; font-size:12px;">DANFSe v2.0<br/>Documento Auxiliar da NFS-e</td>
@@ -263,7 +263,7 @@ async function montarHtmlDanfse(nota) {
       ${secao('PRESTADOR / FORNECEDOR', [['CNPJ / CPF / NIF', e(fmtDocumento(p.doc)), 25], ['Indicador Municipal (Inscrição)', '-', 25], ['Telefone', e(fmtTelefone(p.fone)), 25]], [
         [['Nome / Nome Empresarial', e(p.nome), 50], ['Município / Sigla UF', `${e(municipioPrestador || '-')} / ${e(p.uf || '-')}`, 25], ['Código IBGE / CEP', `${fmtIbge(p.cMun)} / ${fmtCep(p.cep)}`, 25]],
         [['Endereço', e(p.endereco), 50], ['E-mail', e(p.email || '-'), 50]],
-        [['Simples Nacional na Data de Competência', e(regime), 50], ['Regime de Apuração Tributária pelo SN', 'Regime de apuração dos tributos federais e municipal pelo Simples Nacional', 50]],
+        [['Simples Nacional na Data de Competência', e(regime), 42], ['Regime de Apuração Tributária pelo SN', 'Regime de apuração dos tributos federais e municipal pelo Simples Nacional', 58]],
       ])}
       ${secao('TOMADOR / ADQUIRENTE', [['CNPJ / CPF / NIF', e(fmtDocumento(t.doc)), 25], ['Indicador Municipal (Inscrição)', '-', 25], ['Telefone', e(fmtTelefone(t.fone)), 25]], [
         [['Nome / Nome Empresarial', e(t.nome || '-'), 50], ['Município / Sigla UF', `${e(municipioTomador || '-')}${ufTomador}`, 25], ['Código IBGE / CEP', `${fmtIbge(t.cMun)} / ${fmtCep(t.cep)}`, 25]],
@@ -289,7 +289,12 @@ async function montarHtmlDanfse(nota) {
         [['Total das Retenções (ISSQN / Federais)', '-', 25], ['VALOR LÍQUIDO DA NFS-e', e(dinheiro(d.liquido || d.valor)), 25, true], ['Total do IBS/CBS', 'R$ 0,00', 25], ['VALOR LÍQUIDO DA NFS-e + IBS/CBS', e(dinheiro(d.liquido || d.valor)), 25, true]],
       ])}
       <div style="border-top:1px solid #000; padding:3px 4px; font-size:8.5px; font-weight:bold;">INFORMAÇÕES COMPLEMENTARES</div>
-      <div style="padding:3px 4px 6px; font-size:9px; min-height:60px;">Totais aproximados dos Tributos cfe. Lei n° 12.741/2012: Federais: -; Estaduais: -; Municipais: -;</div>
+      <div style="padding:3px 4px 6px; font-size:9px; flex:1;">Totais aproximados dos Tributos cfe. Lei n° 12.741/2012: Federais: -; Estaduais: -; Municipais: -;</div>
+      <table style="width:100%; border-collapse:collapse; border:1px solid #000; margin:6px; width:calc(100% - 12px); table-layout:fixed;"><tr>
+        <td style="${TD} width:25%; border-right:1px solid #000; font-size:8px; font-weight:bold;">DATA CIENTIFICAÇÃO:<br/><br/></td>
+        <td style="${TD} width:30%; border-right:1px solid #000; font-size:8px; font-weight:bold;">IDENTIFICAÇÃO E ASSINATURA</td>
+        <td style="${TD} font-size:8px;"><b>N° NFS-e / CHAVE NFS-e</b><br/>${e(d.numero)} / ${e(chave)}</td>
+      </tr></table>
     </div>`
 }
 
