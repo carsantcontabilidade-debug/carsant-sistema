@@ -57,6 +57,15 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// A NFS-e do Emissor Nacional não tem "código de verificação" — o que o
+// cliente usa pra validar a nota é a chave de acesso (50 dígitos), que o
+// sistema guarda no mesmo campo (codigo_verificacao). As notas antigas do
+// WebISS continuam com o código curto de sempre.
+function rotuloVerificacao(codigo, maiuscula = false) {
+  const rotulo = /^\d{50}$/.test(codigo || "") ? "chave de acesso" : "código de verificação";
+  return maiuscula ? rotulo.charAt(0).toUpperCase() + rotulo.slice(1) : rotulo;
+}
+
 // Quebra o texto em vários <span> separados, sem adicionar nem remover nenhum
 // caractere — só muda como o texto fica agrupado no HTML. Isso impede que o
 // Gmail reconheça um trecho como "pix.bcb.gov.br" (comum em Pix dinâmico do
@@ -805,7 +814,7 @@ export default function Cobrancas() {
     // Pix Copia e Cola costuma ter um trecho parecido com URL (ex: pix.bcb.gov.br)
     // embutido — sem formatação, o WhatsApp sublinha o código inteiro como link.
     // Bloco de código (```) evita isso, sem alterar um caractere do conteúdo.
-    return `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (código de verificação ${notaFiscal.codigo_verificacao})` : ""}`;
+    return `Olá! Segue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n\`\`\`${cob.pix_copia_cola}\`\`\`\n\n` : ""}${linkBoleto ? `Boleto (PDF): ${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse} (${rotuloVerificacao(notaFiscal.codigo_verificacao)} ${notaFiscal.codigo_verificacao})` : ""}`;
   }
 
   // Envio individual: copia a mensagem pronta pra área de transferência, sem
@@ -860,7 +869,7 @@ export default function Cobrancas() {
       console.warn("Não foi possível gerar o link do boleto para o e-mail:", e.message);
     }
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
-    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto para visualização/impressão:\n${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\nCódigo de verificação: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto para visualização/impressão:\n${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\n${rotuloVerificacao(notaFiscal.codigo_verificacao, true)}: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
 
     // QR Code gerado a partir do próprio texto do Pix (o Inter só devolve o
     // copia-e-cola, não uma imagem pronta) — não altera nada no código, só
@@ -885,7 +894,7 @@ export default function Cobrancas() {
       (qrCodeBase64 ? `<p><strong>Pague com Pix (aponte a câmera do banco):</strong><br><img src="cid:pixqrcode" alt="QR Code Pix" width="200" height="200" /></p>` : "") +
       (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${htmlSemLinkAutomatico(cob.pix_copia_cola)}</code></p>` : "") +
       (linkBoleto ? `<p><a href="${linkBoleto}">Boleto para visualização/impressão</a></p>` : "") +
-      (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>Código de verificação: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
+      (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>${rotuloVerificacao(notaFiscal.codigo_verificacao, true)}: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
       `<p>Em caso de dúvidas, entre em contato.</p>` +
       `<p>Atenciosamente,<br>Equipe CARSANT Contabilidade<br>Feira de Santana, BA</p>` +
     `</div>`;

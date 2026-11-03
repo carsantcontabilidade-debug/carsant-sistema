@@ -1019,8 +1019,8 @@ export default function NfseEmitir() {
       )}
 
       <div className="border-t border-gray-200 pt-6">
-        <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — WebISS (homologação)</h2>
-        <p className="text-sm text-gray-500 mb-4">Ferramenta de teste — integração direta com a Prefeitura de Feira de Santana (padrão ABRASF 2.02). A emissão real acontece pela tela de Clientes.</p>
+        <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — Emissor Nacional (homologação)</h2>
+        <p className="text-sm text-gray-500 mb-4">Ferramenta de teste — integração direta com o Emissor Nacional da NFS-e (ambiente de produção restrita, sem efeito fiscal). A emissão real acontece pela tela de Clientes.</p>
       </div>
 
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">
@@ -1115,7 +1115,7 @@ export default function NfseEmitir() {
 
         <button type="submit" disabled={enviando} className="btn-primary gap-2">
           {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-          {enviando ? 'Enviando ao WebISS...' : 'Emitir NFS-e (Homologação)'}
+          {enviando ? 'Enviando ao Emissor Nacional...' : 'Emitir NFS-e (Homologação)'}
         </button>
       </form>
 

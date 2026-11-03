@@ -6,8 +6,17 @@ import {
 } from './_webiss-nfse.js';
 import { baixarDanfseOficialPdf, buscarPdfNfseOficialViaRenderizacao } from './_webiss-portal.js';
 import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
+import * as nacional from './_nfse-nacional.js';
 
-// Emite/cancela/substitui uma NFS-e via WebISS. Só um gestor autenticado
+// Emissor das notas NOVAS: o Emissor Nacional da NFS-e (obrigatório para as
+// empresas do Simples Nacional desde 01/11/2026). Notas já emitidas pelo
+// WebISS continuam sendo canceladas/substituídas/baixadas pelo WebISS — a
+// série da DPS (nacional.SERIE_NACIONAL) diz de qual emissor é cada nota.
+// NFSE_PROVEDOR=webiss na Vercel volta a emitir pelo WebISS (rollback).
+const provedorDeEmissao = () => (process.env.NFSE_PROVEDOR === 'webiss' ? 'webiss' : 'nacional');
+const ehNotaNacional = (nota) => String(nota?.rps_serie) === nacional.SERIE_NACIONAL;
+
+// Emite/cancela/substitui uma NFS-e (Emissor Nacional ou WebISS, ver acima). Só um gestor autenticado
 // pode chamar. Dispatcha por req.body.acao ('emitir' por padrão, 'cancelar'
 // ou 'substituir') — tudo num único endpoint pra não esbarrar no teto de
 // 12 Serverless Functions do plano Hobby da Vercel.
@@ -54,7 +63,7 @@ export default async function handler(req, res) {
 }
 
 async function buscarNotaDeProducao(admin, notaId) {
-  const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('numero_nfse, ambiente').eq('id', notaId).single();
+  const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('numero_nfse, ambiente, rps_serie, chave_acesso').eq('id', notaId).single();
   if (notaError || !nota) return { erro: { status: 404, mensagem: 'Nota fiscal não encontrada.' } };
   if (!nota.numero_nfse) return { erro: { status: 400, mensagem: 'Esta nota não tem número da NFS-e registrado.' } };
   if (nota.ambiente !== 'producao') {
@@ -69,6 +78,15 @@ async function baixarDanfseOficial(admin, req, res) {
 
   const { nota, erro } = await buscarNotaDeProducao(admin, notaId);
   if (erro) return res.status(erro.status).json({ error: erro.mensagem });
+
+  if (ehNotaNacional(nota)) {
+    try {
+      const { pdfBase64, nomeArquivo } = await nacional.baixarDanfseNacional({ chaveAcesso: nota.chave_acesso, ambiente: nota.ambiente });
+      return res.status(200).json({ success: true, pdfBase64, nomeArquivo });
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
+  }
 
   try {
     // Renderiza a página de visualização oficial com um Chromium headless
@@ -157,7 +175,10 @@ async function emitirNota(admin, req, res, userId) {
     return res.status(400).json({ error: 'Discriminação do serviço precisa ter pelo menos 10 caracteres.' });
   }
 
-  dados.rpsSerie = dados.rpsSerie || '1';
+  const provedor = provedorDeEmissao();
+  // Série da DPS: a do Emissor Nacional é fixa (identifica as notas dele na
+  // base); a do WebISS segue como antes.
+  dados.rpsSerie = provedor === 'nacional' ? nacional.SERIE_NACIONAL : (dados.rpsSerie || '1');
   dados.competencia = dados.competencia || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
   if (!dados.rpsNumero) {
@@ -191,13 +212,25 @@ async function emitirNota(admin, req, res, userId) {
   }
 
   try {
-    const envelope = montarDpsAssinada({
-      ...dados,
-      ambiente: ambienteFinal,
-      dataEmissaoRps: new Date(),
-    });
-    const resultadoXml = await enviarGerarNfse(envelope, ambienteFinal);
-    const { numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml);
+    let numero, codigoVerificacao, chaveAcesso, dataEmissao, resultadoXml;
+    if (provedor === 'nacional') {
+      const r = await nacional.emitirNfseNacional({ ...dados, ambiente: ambienteFinal });
+      numero = r.numero;
+      chaveAcesso = r.chaveAcesso;
+      // A NFS-e nacional não tem "código de verificação": a chave de acesso
+      // (50 dígitos) é o que o cliente usa pra validar a nota no portal.
+      codigoVerificacao = r.chaveAcesso;
+      dataEmissao = r.dataEmissao;
+      resultadoXml = r.xml;
+    } else {
+      const envelope = montarDpsAssinada({
+        ...dados,
+        ambiente: ambienteFinal,
+        dataEmissaoRps: new Date(),
+      });
+      resultadoXml = await enviarGerarNfse(envelope, ambienteFinal);
+      ({ numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml));
+    }
 
     const { error: updateError } = await admin.from('notas_fiscais').update({
       numero_nfse: numero,
@@ -209,7 +242,7 @@ async function emitirNota(admin, req, res, userId) {
       xml_resposta: resultadoXml,
     }).eq('id', notaReservada.id);
     if (updateError) {
-      // A nota já foi emitida de verdade no WebISS — não falhar a resposta
+      // A nota já foi emitida de verdade — não falhar a resposta
       // por causa de um erro ao só *registrar* isso aqui, mas avisar.
       console.error('Falha ao gravar notas_fiscais:', updateError.message);
     }
@@ -229,7 +262,7 @@ async function emitirNota(admin, req, res, userId) {
 }
 
 async function cancelarNota(admin, req, res) {
-  const { notaId, codigoCancelamento } = req.body || {};
+  const { notaId, codigoCancelamento, motivoCodigo, motivoTexto } = req.body || {};
   if (!notaId) return res.status(400).json({ error: 'Campo "notaId" é obrigatório.' });
 
   const { data: nota, error: notaError } = await admin.from('notas_fiscais').select('*').eq('id', notaId).single();
@@ -238,8 +271,19 @@ async function cancelarNota(admin, req, res) {
   if (!nota.numero_nfse) return res.status(400).json({ error: 'Esta nota não tem número da NFS-e registrado — não é possível cancelar.' });
 
   try {
-    const envelope = montarCancelarNfseEnvio({ ambiente: nota.ambiente, numero: nota.numero_nfse }, undefined, codigoCancelamento);
-    await enviarCancelarNfse(envelope, nota.ambiente);
+    if (ehNotaNacional(nota)) {
+      // Evento de cancelamento (e101101) no Emissor Nacional. cMotivo: 1 = erro
+      // na emissão, 2 = serviço não prestado, 9 = outros.
+      await nacional.cancelarNfseNacional({
+        chaveAcesso: nota.chave_acesso,
+        ambiente: nota.ambiente,
+        codigoMotivo: ['1', '2', '9'].includes(String(motivoCodigo)) ? String(motivoCodigo) : '1',
+        motivo: motivoTexto,
+      });
+    } else {
+      const envelope = montarCancelarNfseEnvio({ ambiente: nota.ambiente, numero: nota.numero_nfse }, undefined, codigoCancelamento);
+      await enviarCancelarNfse(envelope, nota.ambiente);
+    }
 
     const { error: updateError } = await admin.from('notas_fiscais').update({
       status: 'cancelada',
@@ -313,14 +357,34 @@ async function substituirNota(admin, req, res, userId) {
   }
 
   try {
-    const envelope = montarSubstituirNfseEnvio(
-      { ambiente: notaAntiga.ambiente, numero: notaAntiga.numero_nfse },
-      { ...dados, ambiente: notaAntiga.ambiente, dataEmissaoRps: new Date() },
-      undefined,
-      codigoCancelamento,
-    );
-    const resultadoXml = await enviarSubstituirNfse(envelope, notaAntiga.ambiente);
-    const { numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml);
+    let numero, codigoVerificacao, chaveAcesso, dataEmissao, resultadoXml;
+    if (ehNotaNacional(notaAntiga)) {
+      // Substituição no Emissor Nacional: a nova DPS referencia a chave da nota
+      // substituída (subst/chSubstda) e o sistema gera a nova NFS-e e cancela a
+      // antiga por substituição, tudo numa chamada.
+      const r = await nacional.emitirNfseNacional({
+        ...dados,
+        ambiente: notaAntiga.ambiente,
+        substituicao: {
+          chave: notaAntiga.chave_acesso,
+          motivo: dados.motivoSubstituicao || 'Substituição solicitada pelo escritório para correção de dados da nota.',
+        },
+      });
+      numero = r.numero;
+      chaveAcesso = r.chaveAcesso;
+      codigoVerificacao = r.chaveAcesso;
+      dataEmissao = r.dataEmissao;
+      resultadoXml = r.xml;
+    } else {
+      const envelope = montarSubstituirNfseEnvio(
+        { ambiente: notaAntiga.ambiente, numero: notaAntiga.numero_nfse },
+        { ...dados, ambiente: notaAntiga.ambiente, dataEmissaoRps: new Date() },
+        undefined,
+        codigoCancelamento,
+      );
+      resultadoXml = await enviarSubstituirNfse(envelope, notaAntiga.ambiente);
+      ({ numero, codigoVerificacao, chaveAcesso, dataEmissao } = parseNfseResposta(resultadoXml));
+    }
 
     const { error: updateError } = await admin.from('notas_fiscais').update({
       status: 'cancelada',
