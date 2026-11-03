@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Loader2, FileText, AlertTriangle, Search, Download, Mail, Archive, Printer, XCircle, Repeat, X, Square, CheckSquare, Send } from 'lucide-react'
-import { baixarComprovantePdf, gerarComprovantePdfBase64, textoParaBase64Utf8 } from '../lib/nfsePdf'
+import { baixarComprovantePdf, gerarComprovantePdfBase64, ehNotaNacionalComXml, textoParaBase64Utf8 } from '../lib/nfsePdf'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const MESES = [
@@ -348,7 +348,7 @@ export default function NfseEmitir() {
   async function baixarPdfIndividual(nota) {
     setBaixandoId(nota.id)
     try {
-      if (nota.ambiente === 'producao' && nota.numero_nfse) {
+      if (nota.ambiente === 'producao' && nota.numero_nfse && !ehNotaNacionalComXml(nota)) {
         // O servidor já tenta renderizar o DANFSE oficial certinho (via
         // Chromium headless) e só cai pro PDF em lote antigo (que corta
         // informação) se isso falhar — ver baixarDanfseOficial em
@@ -375,7 +375,7 @@ export default function NfseEmitir() {
     setEnviandoId(nota.id)
     try {
       let pdfBase64 = null
-      if (nota.ambiente === 'producao' && nota.numero_nfse) {
+      if (nota.ambiente === 'producao' && nota.numero_nfse && !ehNotaNacionalComXml(nota)) {
         try {
           pdfBase64 = await baixarDanfseOficialBase64(nota.id)
         } catch (err) {

@@ -83,9 +83,141 @@ async function comContainerTemporario(html, callback) {
   }
 }
 
+// ─── DANFSe próprio (notas do Emissor Nacional) ─────────────────────────────
+// A API de DANFSe do portal nacional foi descontinuada (retorna 503) — a
+// NT 008/2026 manda o emissor gerar o DANFSe a partir do XML da nota. Monta
+// o documento com os campos do XML gravado em notas_fiscais.xml_resposta.
+
+export function ehNotaNacionalComXml(nota) {
+  return String(nota?.chave_acesso || '').replace(/\D/g, '').length === 50 && !!nota?.xml_resposta
+}
+
+function dadosDoXml(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) return null
+  const filho = (pai, nome) => (pai ? pai.getElementsByTagNameNS('*', nome)[0] || null : null)
+  const txt = (pai, nome) => (filho(pai, nome)?.textContent || '').trim()
+  const inf = filho(doc, 'infNFSe')
+  const dps = filho(inf, 'infDPS')
+  if (!inf || !dps) return null
+  const emit = filho(inf, 'emit')
+  const toma = filho(dps, 'toma')
+  const end = filho(toma, 'end')
+  return {
+    numero: txt(inf, 'nNFSe'),
+    processamento: txt(inf, 'dhProc'),
+    local: txt(inf, 'xLocPrestacao') || txt(inf, 'xLocEmi'),
+    tribNac: txt(inf, 'xTribNac'),
+    nbs: txt(inf, 'xNBS'),
+    ambiente: txt(inf, 'ambGer'),
+    prestador: {
+      nome: txt(emit, 'xNome'), doc: txt(emit, 'CNPJ'), fone: txt(emit, 'fone'), email: txt(emit, 'email'),
+      endereco: [txt(emit, 'xLgr'), txt(emit, 'nro'), txt(emit, 'xBairro'), txt(emit, 'UF'), txt(emit, 'CEP')].filter(Boolean).join(', '),
+    },
+    tomador: {
+      nome: txt(toma, 'xNome'), doc: txt(toma, 'CNPJ') || txt(toma, 'CPF'), fone: txt(toma, 'fone'), email: txt(toma, 'email'),
+      endereco: [txt(end, 'xLgr'), txt(end, 'nro'), txt(end, 'xCpl'), txt(end, 'xBairro'), txt(end, 'CEP')].filter(Boolean).map((s) => s.replace(/\s+/g, ' ')).join(', '),
+    },
+    competencia: txt(dps, 'dCompet'),
+    descricao: txt(dps, 'xDescServ'),
+    valor: txt(dps, 'vServ'),
+    liquido: txt(inf, 'vLiq'),
+    issRetido: txt(dps, 'tpRetISSQN') === '1' ? 'Não retido' : 'Retido',
+    pTotTribSN: txt(dps, 'pTotTribSN'),
+  }
+}
+
+function fmtDocumento(d) {
+  const n = String(d || '').replace(/\D/g, '')
+  if (n.length === 14) return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+  if (n.length === 11) return n.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+  return d || '—'
+}
+
+function fmtDataHora(iso) {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+}
+
+async function qrCodeDataUrl(texto) {
+  try {
+    if (!window.qrcode) {
+      await new Promise((ok, falha) => {
+        const s = document.createElement('script')
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
+        s.onload = ok
+        s.onerror = falha
+        document.head.appendChild(s)
+      })
+    }
+    const qr = window.qrcode(0, 'M')
+    qr.addData(texto)
+    qr.make()
+    return qr.createDataURL(4, 0)
+  } catch {
+    return null
+  }
+}
+
+async function montarHtmlDanfse(nota) {
+  const d = dadosDoXml(nota.xml_resposta)
+  if (!d) return null
+  const chave = String(nota.chave_acesso).replace(/\D/g, '')
+  const qr = await qrCodeDataUrl(`https://www.nfse.gov.br/consultapublica/?tpc=1&chave=${chave}`)
+  const e = escapeHtml
+  const linha = (rotulo, valor, negrito) =>
+    `<tr><td style="padding:3px 8px 3px 0; color:#6b7280; width:28%; vertical-align:top;">${rotulo}</td><td style="padding:3px 0;${negrito ? ' font-weight:bold;' : ''}">${valor || '—'}</td></tr>`
+  const bloco = (titulo, linhas) =>
+    `<div style="border:1px solid #d1d5db; border-radius:4px; margin-top:10px; padding:8px 10px;"><div style="font-size:11px; font-weight:bold; color:#374151; text-transform:uppercase; margin-bottom:4px;">${titulo}</div><table style="width:100%; border-collapse:collapse; font-size:12px;">${linhas}</table></div>`
+  const producao = d.ambiente !== '2'
+  return `
+    <div style="font-family: Arial, sans-serif; padding:16px; color:#1f2937; max-width:700px;">
+      <table style="width:100%; border-collapse:collapse;"><tr>
+        <td><div style="font-size:16px; font-weight:bold;">DANFSe — Documento Auxiliar da NFS-e</div>
+            <div style="font-size:11px; color:#6b7280;">Nota Fiscal de Serviço Eletrônica · Padrão Nacional${producao ? '' : ' · AMBIENTE DE HOMOLOGAÇÃO'}</div></td>
+        <td style="text-align:right; width:110px;">${qr ? `<img src="${qr}" style="width:96px; height:96px;" />` : ''}</td>
+      </tr></table>
+      ${bloco('Identificação da NFS-e',
+        linha('Chave de acesso', e(chave), true) +
+        linha('Número da NFS-e', e(d.numero), true) +
+        linha('Competência', e(d.competencia ? fmtData(d.competencia) : '')) +
+        linha('Emissão', e(fmtDataHora(d.processamento))) +
+        linha('Local da prestação', e(d.local)))}
+      ${bloco('Prestador do serviço',
+        linha('Nome / Razão social', e(d.prestador.nome), true) +
+        linha('CNPJ', e(fmtDocumento(d.prestador.doc))) +
+        linha('Endereço', e(d.prestador.endereco)) +
+        linha('Telefone / E-mail', e([d.prestador.fone, d.prestador.email].filter(Boolean).join(' · '))) +
+        linha('Regime', 'Simples Nacional — ME/EPP'))}
+      ${bloco('Tomador do serviço',
+        linha('Nome / Razão social', e(d.tomador.nome), true) +
+        linha('CPF / CNPJ', e(fmtDocumento(d.tomador.doc))) +
+        linha('Endereço', e(d.tomador.endereco)) +
+        linha('Telefone / E-mail', e([d.tomador.fone, d.tomador.email].filter(Boolean).join(' · '))))}
+      ${bloco('Serviço prestado',
+        linha('Código de tributação nacional', e(d.tribNac)) +
+        linha('Serviço (NBS)', e(d.nbs)) +
+        linha('Discriminação', e(d.descricao || nota.discriminacao)))}
+      ${bloco('Valores',
+        linha('Valor do serviço', fmtValor(d.valor), true) +
+        linha('Valor líquido', fmtValor(d.liquido || d.valor), true) +
+        linha('ISSQN', e(d.issRetido)) +
+        (d.pTotTribSN ? linha('Total aproximado de tributos (Simples)', `${e(d.pTotTribSN)}%`) : ''))}
+      <p style="font-size:10px; color:#9ca3af; margin-top:12px;">Documento gerado pelo sistema CARSANT a partir do XML da NFS-e. Para conferir a nota, leia o QR Code ou consulte a chave de acesso em nfse.gov.br.</p>
+    </div>`
+}
+
+async function montarHtmlDoPdf(nota, cliente) {
+  if (ehNotaNacionalComXml(nota)) {
+    const danfse = await montarHtmlDanfse(nota).catch(() => null)
+    if (danfse) return danfse
+  }
+  return montarHtmlComprovante(nota, cliente)
+}
+
 export async function baixarComprovantePdf(nota, cliente) {
   const html2pdf = await carregarHtml2Pdf()
-  const html = montarHtmlComprovante(nota, cliente)
+  const html = await montarHtmlDoPdf(nota, cliente)
   await comContainerTemporario(html, (container) =>
     html2pdf()
       .set({ margin: 10, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, filename: `NFSe-${nota.numero_nfse || nota.id}.pdf` })
@@ -96,7 +228,7 @@ export async function baixarComprovantePdf(nota, cliente) {
 
 export async function gerarComprovantePdfBase64(nota, cliente) {
   const html2pdf = await carregarHtml2Pdf()
-  const html = montarHtmlComprovante(nota, cliente)
+  const html = await montarHtmlDoPdf(nota, cliente)
   return comContainerTemporario(html, async (container) => {
     const dataUri = await html2pdf()
       .set({ margin: 10, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } })
