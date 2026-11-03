@@ -165,9 +165,13 @@ export default function NfseEmitir() {
     }
   }
 
+  // O cliente selecionado fica sempre na lista, mesmo que a busca o esconda —
+  // senão a seleção continua valendo "às escondidas" (o select mostra outro
+  // cliente destacado, mas a nota sai para o escolhido antes).
   const clientesFiltradosEmissao = clientesDisponiveis.filter((c) =>
-    c.nome.toLowerCase().includes(buscaClienteEmissao.toLowerCase())
+    c.id === clienteEmissaoId || c.nome.toLowerCase().includes(buscaClienteEmissao.toLowerCase())
   )
+  const clienteEmissaoSelecionado = clientesDisponiveis.find((c) => c.id === clienteEmissaoId)
 
   async function emitirNotaIndividualReal() {
     const cliente = clientesDisponiveis.find((c) => c.id === clienteEmissaoId)
@@ -355,6 +359,7 @@ export default function NfseEmitir() {
           return
         } catch (err) {
           console.warn('DANFSE oficial indisponível, usando comprovante do sistema:', err.message)
+          alert(`Não foi possível baixar o DANFSe oficial — será gerado o comprovante simples do sistema.\n\nMotivo: ${err.message}`)
         }
       }
       await baixarComprovantePdf(nota, nota.clientes)
@@ -862,6 +867,10 @@ export default function NfseEmitir() {
                   ))}
                 </select>
               </div>
+
+              {clienteEmissaoSelecionado && (
+                <p className="text-sm font-semibold text-blue-700">Nota será emitida para: {clienteEmissaoSelecionado.nome}</p>
+              )}
 
               {clienteEmissaoId && (
                 <>

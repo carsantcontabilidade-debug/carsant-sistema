@@ -451,7 +451,8 @@ export async function baixarDanfseNacional({ chaveAcesso, ambiente }) {
   const resposta = await requisitar({ host: cfg.adn, path: `/danfse/${chave}`, accept: 'application/pdf' }, credenciais());
   const ehPdf = resposta.tipo.includes('pdf') || resposta.corpo.subarray(0, 4).toString() === '%PDF';
   if (resposta.status !== 200 || !ehPdf) {
-    throw new Error(`O Emissor Nacional não devolveu o DANFSe desta nota (HTTP ${resposta.status}).`);
+    const trecho = resposta.corpo.subarray(0, 300).toString('utf8').replace(/\s+/g, ' ').trim();
+    throw new Error(`O Emissor Nacional não devolveu o DANFSe desta nota (HTTP ${resposta.status}, ${resposta.tipo || 'sem tipo'}): ${trecho}`);
   }
   return { pdfBase64: resposta.corpo.toString('base64'), nomeArquivo: `DANFSe-${chave}.pdf` };
 }

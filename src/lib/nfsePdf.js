@@ -52,7 +52,7 @@ function montarHtmlComprovante(nota, cliente) {
         <tr><td style="padding:6px 0; color:#6b7280; vertical-align:top;">Discriminação</td><td style="padding:6px 0;">${escapeHtml(nota.discriminacao) || '—'}</td></tr>
       </table>
       <p style="font-size:11px; color:#9ca3af; margin-top:24px;">
-        Para validar o documento oficial (DANFSE), acesse o portal da Prefeitura de Feira de Santana (WebISS) e informe o código de verificação acima.
+        Para validar o documento oficial (DANFSe), acesse o Emissor Nacional (nfse.gov.br) e consulte pela chave de acesso acima. Notas antigas do WebISS usam o código de verificação.
       </p>
     </div>
   `
