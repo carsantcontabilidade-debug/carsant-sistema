@@ -64,6 +64,29 @@ export default function NfseEmitir() {
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState(null)
   const [erro, setErro] = useState('')
+  const [diagnostico, setDiagnostico] = useState(null)
+  const [diagnosticando, setDiagnosticando] = useState(false)
+
+  // Só leitura: pergunta ao Emissor Nacional (produção e homologação) se o
+  // município está conveniado e quais os parâmetros do serviço — usado para
+  // entender recusas como E0037.
+  async function consultarConvenioNacional() {
+    setDiagnosticando(true)
+    setDiagnostico(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/nfse-emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ acao: 'diagnosticoNacional' }),
+      })
+      setDiagnostico(JSON.stringify(await resp.json(), null, 2))
+    } catch (err) {
+      setDiagnostico(`Erro: ${err.message}`)
+    } finally {
+      setDiagnosticando(false)
+    }
+  }
 
   const [consulta, setConsulta] = useState(emptyConsulta)
   const [consultando, setConsultando] = useState(false)
@@ -1021,6 +1044,12 @@ export default function NfseEmitir() {
       <div className="border-t border-gray-200 pt-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — Emissor Nacional (homologação)</h2>
         <p className="text-sm text-gray-500 mb-4">Ferramenta de teste — integração direta com o Emissor Nacional da NFS-e (ambiente de produção restrita, sem efeito fiscal). A emissão real acontece pela tela de Clientes.</p>
+        <div className="mb-4">
+          <button type="button" onClick={consultarConvenioNacional} disabled={diagnosticando} className="btn-secondary btn-sm">
+            {diagnosticando ? 'Consultando...' : 'Diagnóstico: consultar convênio do município no Emissor Nacional'}
+          </button>
+          {diagnostico && <pre id="diagnostico-nacional" className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs overflow-auto max-h-96 whitespace-pre-wrap break-all">{diagnostico}</pre>}
+        </div>
       </div>
 
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-yellow-800">
