@@ -237,12 +237,13 @@ async function montarHtmlDanfse(nota) {
   const situacao = d.cStat === '100' ? 'NFS-e Gerada' : '-'
   const municipioPrestador = d.prestador.municipio || MUNICIPIOS[d.prestador.cMun] || ''
   const municipioTomador = d.tomador.municipio || d.tomador.cMun
-  const ufTomador = ''
+  const UF_POR_PREFIXO = { 29: 'BA', 35: 'SP', 33: 'RJ', 31: 'MG', 28: 'SE', 26: 'PE', 23: 'CE', 53: 'DF', 41: 'PR', 42: 'SC', 43: 'RS', 52: 'GO' }
+  const ufTomador = UF_POR_PREFIXO[String(d.tomador.cMun).slice(0, 2)] ? ` / ${UF_POR_PREFIXO[String(d.tomador.cMun).slice(0, 2)]}` : ''
   const t = d.tomador
   const p = d.prestador
 
   return `
-    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:720px; border:1px solid #000; box-sizing:border-box;">
+    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:640px; border:1px solid #000; box-sizing:border-box;">
       <table style="width:100%; border-collapse:collapse;"><tr>
         <td style="${TD} width:30%; vertical-align:middle;"><span style="font-size:26px; font-weight:bold; color:#0b6fb8;">NFS</span><span style="font-size:26px; font-weight:bold; color:#16a34a;">e</span><br/><span style="font-size:8px; color:#374151;">Nota Fiscal de Serviço eletrônica</span></td>
         <td style="${TD} width:40%; text-align:center; vertical-align:middle; font-weight:bold; font-size:12px;">DANFSe v2.0<br/>Documento Auxiliar da NFS-e</td>
