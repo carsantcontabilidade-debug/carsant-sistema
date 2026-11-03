@@ -221,14 +221,14 @@ async function montarHtmlDanfse(nota) {
   // Linha de uma "tabela de células": cada célula = [rótulo, valor, largura%].
   const TD = 'border:0; padding:2px 4px; vertical-align:top;'
   const celula = ([rotulo, valor, largura, destaque]) =>
-    `<td style="${TD} width:${largura}%;${destaque ? ' background:#f3f4f6;' : ''}"><div style="font-size:7.5px; font-weight:bold;">${e(rotulo)}</div><div style="font-size:9px;">${valor}</div></td>`
+    `<td colspan="${Math.max(1, Math.round(largura / 5))}" style="${TD} width:${largura}%;${destaque ? ' background:#f3f4f6;' : ''}"><div style="font-size:7.5px; font-weight:bold;">${e(rotulo)}</div><div style="font-size:9px;">${valor}</div></td>`
   const linha = (celulas) => `<tr>${celulas.map(celula).join('')}</tr>`
   const secao = (titulo, sub, linhas) =>
-    `<table style="width:100%; border-collapse:collapse; border-top:1px solid #000;">
-       <tr><td style="${TD} width:25%; background:#f3f4f6; font-size:9px; font-weight:bold; vertical-align:middle;" rowspan="2">${e(titulo)}</td>
+    `<table style="width:100%; border-collapse:collapse; border-top:1px solid #000; table-layout:fixed;"><colgroup>${'<col style="width:5%">'.repeat(20)}</colgroup>
+       <tr><td colspan="5" style="${TD} width:25%; background:#f3f4f6; font-size:8.5px; font-weight:bold; vertical-align:middle;" rowspan="2">${e(titulo)}</td>
        ${sub.map(celula).join('')}</tr>
      </table>
-     <table style="width:100%; border-collapse:collapse; table-layout:fixed;">${linhas.map(linha).join('')}</table>`
+     <table style="width:100%; border-collapse:collapse; table-layout:fixed;"><colgroup>${'<col style="width:5%">'.repeat(20)}</colgroup>${linhas.map(linha).join('')}</table>`
   const faixa = (texto) => `<div style="border-top:1px solid #000; text-align:center; font-size:8.5px; padding:1px 0;">${e(texto)}</div>`
 
   const regime = d.opSimpNac === '3' ? 'Optante - Microempresa ou Empresa de Pequeno Porte' : d.opSimpNac === '2' ? 'Optante - Microempreendedor Individual (MEI)' : 'Não Optante'
@@ -243,7 +243,7 @@ async function montarHtmlDanfse(nota) {
   const p = d.prestador
 
   return `
-    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:690px; min-height:1000px; display:flex; flex-direction:column; border:1px solid #000; box-sizing:border-box;">
+    <div style="font-family: Arial, Helvetica, sans-serif; color:#000; width:705px; min-height:1000px; display:flex; flex-direction:column; border:1px solid #000; box-sizing:border-box;">
       <table style="width:100%; border-collapse:collapse;"><tr>
         <td style="${TD} width:30%; vertical-align:middle;"><span style="font-size:26px; font-weight:bold; color:#0b6fb8;">NFS</span><span style="font-size:26px; font-weight:bold; color:#16a34a;">e</span><br/><span style="font-size:8px; color:#374151;">Nota Fiscal de Serviço eletrônica</span></td>
         <td style="${TD} width:40%; text-align:center; vertical-align:middle; font-weight:bold; font-size:12px;">DANFSe v2.0<br/>Documento Auxiliar da NFS-e</td>
