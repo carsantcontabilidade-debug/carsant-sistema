@@ -402,6 +402,37 @@ export async function cancelarNfseNacional({ chaveAcesso, codigoMotivo = '1', mo
   throw new Error(`Emissor Nacional recusou o cancelamento: ${mensagemDeFalha(resposta, json, erros)}`);
 }
 
+// ─── Diagnóstico: parâmetros municipais (somente leitura) ───────────────────
+// Consulta o convênio do município e os parâmetros do serviço nos dois
+// ambientes, testando os caminhos candidatos (o manual dá só o sufixo
+// /parametros_municipais/{codigoMunicipio}/...). Usado para entender recusas
+// como E0037 ("município emissor inexistente no cadastro de convênio").
+export async function consultarParametrosMunicipais() {
+  const cred = credenciais();
+  const cMun = CARSANT.codigoMunicipioIbge;
+  const resultado = {};
+  for (const ambiente of ['producao', 'homologacao']) {
+    const cfg = AMBIENTES[ambiente];
+    const sufixos = [`/parametros_municipais/${cMun}/convenio`, `/parametros_municipais/${cMun}/${CARSANT.codigoTributacaoNacional}`];
+    const candidatos = [];
+    for (const sufixo of sufixos) {
+      for (const base of cfg.bases) candidatos.push({ host: cfg.sefin, path: `${base}${sufixo}` });
+      candidatos.push({ host: cfg.adn, path: `/parametrizacao${sufixo}` });
+      candidatos.push({ host: cfg.adn, path: sufixo });
+    }
+    resultado[ambiente] = [];
+    for (const c of candidatos) {
+      try {
+        const r = await requisitar({ ...c, method: 'GET' }, cred);
+        resultado[ambiente].push({ url: `https://${c.host}${c.path}`, status: r.status, corpo: r.corpo.toString('utf8').replace(/\s+/g, ' ').slice(0, 1200) });
+      } catch (err) {
+        resultado[ambiente].push({ url: `https://${c.host}${c.path}`, erro: err.message });
+      }
+    }
+  }
+  return resultado;
+}
+
 // ─── DANFSe oficial ─────────────────────────────────────────────────────────
 export async function baixarDanfseNacional({ chaveAcesso, ambiente }) {
   const cfg = configAmbiente(ambiente);

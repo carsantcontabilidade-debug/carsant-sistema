@@ -59,6 +59,13 @@ export default async function handler(req, res) {
   if (acao === 'cancelar') return cancelarNota(admin, req, res);
   if (acao === 'substituir') return substituirNota(admin, req, res, userData.user.id);
   if (acao === 'baixarDanfseOficial') return baixarDanfseOficial(admin, req, res);
+  if (acao === 'diagnosticoNacional') {
+    try {
+      return res.status(200).json(await nacional.consultarParametrosMunicipais());
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
+  }
   return emitirNota(admin, req, res, userData.user.id);
 }
 
