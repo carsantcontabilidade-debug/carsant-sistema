@@ -413,22 +413,26 @@ export async function consultarParametrosMunicipais() {
   const resultado = {};
   for (const ambiente of ['producao', 'homologacao']) {
     const cfg = AMBIENTES[ambiente];
-    const sufixos = [`/parametros_municipais/${cMun}/convenio`, `/parametros_municipais/${cMun}/${CARSANT.codigoTributacaoNacional}`];
+    // Municípios de controle (Salvador e São Paulo, sabidamente conveniados):
+    // se eles respondem e Feira de Santana não, o município está fora da lista;
+    // se todos dão 404, o caminho é que está errado.
     const candidatos = [];
-    for (const sufixo of sufixos) {
-      for (const base of cfg.bases) candidatos.push({ host: cfg.sefin, path: `${base}${sufixo}` });
-      candidatos.push({ host: cfg.adn, path: `/parametrizacao${sufixo}` });
-      candidatos.push({ host: cfg.adn, path: sufixo });
+    for (const m of [cMun, '2927408', '3550308']) {
+      candidatos.push({ host: cfg.adn, path: `/parametrizacao/parametros_municipais/${m}/convenio` });
+      candidatos.push({ host: cfg.adn, path: `/parametrizacao/${m}/convenio` });
+      candidatos.push({ host: cfg.adn, path: `/parametrizacao/parametros_municipais/${m}/convenio/` });
     }
-    resultado[ambiente] = [];
-    for (const c of candidatos) {
+    candidatos.push({ host: cfg.adn, path: `/parametrizacao/parametros_municipais/${cMun}/${CARSANT.codigoTributacaoNacional}` });
+    candidatos.push({ host: cfg.adn, path: '/parametrizacao/docs/index.html' });
+    candidatos.push({ host: cfg.adn, path: '/parametrizacao/swagger/v1/swagger.json' });
+    resultado[ambiente] = await Promise.all(candidatos.map(async (c) => {
       try {
         const r = await requisitar({ ...c, method: 'GET' }, cred);
-        resultado[ambiente].push({ url: `https://${c.host}${c.path}`, status: r.status, corpo: r.corpo.toString('utf8').replace(/\s+/g, ' ').slice(0, 1200) });
+        return { url: `https://${c.host}${c.path}`, status: r.status, corpo: r.corpo.toString('utf8').replace(/\s+/g, ' ').slice(0, 700) };
       } catch (err) {
-        resultado[ambiente].push({ url: `https://${c.host}${c.path}`, erro: err.message });
+        return { url: `https://${c.host}${c.path}`, erro: err.message };
       }
-    }
+    }));
   }
   return resultado;
 }
