@@ -169,7 +169,7 @@ async function montarHtmlDanfse(nota) {
     `<tr><td style="padding:3px 8px 3px 0; color:#6b7280; width:28%; vertical-align:top;">${rotulo}</td><td style="padding:3px 0;${negrito ? ' font-weight:bold;' : ''}">${valor || '—'}</td></tr>`
   const bloco = (titulo, linhas) =>
     `<div style="border:1px solid #d1d5db; border-radius:4px; margin-top:10px; padding:8px 10px;"><div style="font-size:11px; font-weight:bold; color:#374151; text-transform:uppercase; margin-bottom:4px;">${titulo}</div><table style="width:100%; border-collapse:collapse; font-size:12px;">${linhas}</table></div>`
-  const producao = d.ambiente !== '2'
+  const producao = nota.ambiente === 'producao'
   return `
     <div style="font-family: Arial, sans-serif; padding:16px; color:#1f2937; max-width:700px;">
       <table style="width:100%; border-collapse:collapse;"><tr>
