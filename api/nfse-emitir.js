@@ -165,8 +165,8 @@ async function emitirNota(admin, req, res, userId) {
     dados.tomador = resolvido.tomador;
   }
 
-  if (!dados.tomador?.cnpj) {
-    return res.status(400).json({ error: 'Tomador sem CNPJ.' });
+  if (!(dados.tomador?.cnpj || dados.tomador?.cpf)) {
+    return res.status(400).json({ error: 'Tomador sem CPF/CNPJ.' });
   }
   if (!dados.valorServicos) {
     return res.status(400).json({ error: 'Campo "valorServicos" é obrigatório.' });

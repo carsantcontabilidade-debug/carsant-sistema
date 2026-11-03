@@ -158,10 +158,12 @@ export function montarInfDeclaracaoDps(dados) {
 }
 
 function montarTomadorXml(tomador) {
-  const cpfCnpj = tomador.cnpj
-    ? `<Cnpj>${tomador.cnpj}</Cnpj>`
-    : tomador.cpf
-      ? `<Cpf>${tomador.cpf}</Cpf>`
+  // O cadastro guarda CPF ou CNPJ no mesmo campo (cnpj) — decide pelo tamanho.
+  const docDigitos = String(tomador.cnpj || tomador.cpf || '').replace(/\D/g, '');
+  const cpfCnpj = docDigitos.length === 11
+    ? `<Cpf>${docDigitos}</Cpf>`
+    : docDigitos
+      ? `<Cnpj>${docDigitos}</Cnpj>`
       : '';
 
   const enderecoXml = tomador.endereco ? (

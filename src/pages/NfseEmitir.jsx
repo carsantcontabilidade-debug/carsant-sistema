@@ -440,8 +440,8 @@ export default function NfseEmitir() {
       return
     }
     const cnpjLimpo = f.tomadorCnpj.replace(/\D/g, '')
-    if (cnpjLimpo.length !== 14) {
-      alert(`O CNPJ do tomador precisa ter exatamente 14 dígitos (tem ${cnpjLimpo.length}).`)
+    if (cnpjLimpo.length !== 11 && cnpjLimpo.length !== 14) {
+      alert(`O CPF (11 dígitos) ou CNPJ (14 dígitos) do tomador está incompleto (tem ${cnpjLimpo.length} dígitos).`)
       return
     }
     if (!window.confirm(`Substituir a NFS-e nº ${nota.numero_nfse}? A nota atual será cancelada e uma nova será emitida no lugar.\n\nEsta ação tem efeito fiscal real perante a Prefeitura e não pode ser desfeita.`)) return
@@ -583,8 +583,8 @@ export default function NfseEmitir() {
     setResultado(null)
 
     const cnpjLimpo = form.tomadorCnpj.replace(/\D/g, '')
-    if (cnpjLimpo && cnpjLimpo.length !== 14) {
-      setErro(`O CNPJ do tomador precisa ter exatamente 14 dígitos (tem ${cnpjLimpo.length}). O WebISS exige esse tamanho exato — evite gastar tentativas testando um valor errado.`)
+    if (cnpjLimpo && cnpjLimpo.length !== 11 && cnpjLimpo.length !== 14) {
+      setErro(`O CPF (11 dígitos) ou CNPJ (14 dígitos) do tomador está incompleto (tem ${cnpjLimpo.length} dígitos).`)
       return
     }
     if (form.discriminacao.trim().length < 10) {
@@ -964,7 +964,7 @@ export default function NfseEmitir() {
                     <input className="input" value={formSubstituir.tomadorNome} onChange={(e) => setFormSubstituir((f) => ({ ...f, tomadorNome: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">CNPJ</label>
+                    <label className="form-label">CPF ou CNPJ</label>
                     <input
                       className="input"
                       value={formSubstituir.tomadorCnpj}
@@ -1061,12 +1061,12 @@ export default function NfseEmitir() {
               <input className="input" value={form.tomadorNome} onChange={e => setForm(f => ({ ...f, tomadorNome: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">CNPJ (fictício)</label>
+              <label className="form-label">CPF ou CNPJ (fictício)</label>
               <input
                 className="input"
                 value={form.tomadorCnpj}
                 onChange={e => setForm(f => ({ ...f, tomadorCnpj: e.target.value.replace(/\D/g, '').slice(0, 14) }))}
-                placeholder="11222333000181 (14 dígitos)"
+                placeholder="CPF (11 dígitos) ou CNPJ (14 dígitos)"
                 maxLength={14}
               />
             </div>

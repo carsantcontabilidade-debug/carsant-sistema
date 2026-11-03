@@ -145,7 +145,11 @@ function montarTomadorXml(tomador) {
 //           valorServicos, discriminacao, tomador: {...},
 //           substituicao?: { chave, motivo } }
 // `im`: inscrição municipal a enviar (null = não enviar) — ver emitirNfseNacional.
-export function montarDpsNacional(dados, im) {
+// `finNFSe`: o esquema de PRODUÇÃO RESTRITA (v1.01 de 20/10/2026, já com os
+// grupos IBS/CBS) exige <finNFSe>0</finNFSe> (nota regular) logo depois de
+// tpEmit; o de produção atual (v1.01 de 09/02/2026) não tem esse campo e
+// rejeita se vier. Ver finNFSePadrao() e o reenvio em emitirNfseNacional.
+export function montarDpsNacional(dados, im, finNFSe = false) {
   const cfg = configAmbiente(dados.ambiente);
   const serie = String(dados.rpsSerie || SERIE_NACIONAL);
   const nDps = String(dados.rpsNumero);
@@ -178,6 +182,7 @@ export function montarDpsNacional(dados, im) {
       `<nDPS>${nDps}</nDPS>` +
       `<dCompet>${competencia}</dCompet>` +
       '<tpEmit>1</tpEmit>' +
+      (finNFSe ? '<finNFSe>0</finNFSe>' : '') +
       `<cLocEmi>${CARSANT.codigoMunicipioIbge}</cLocEmi>` +
       sub +
       '<prest>' +
@@ -224,9 +229,17 @@ function assinar(xml, id, { certPem, keyPem }) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n${sig.getSignedXml()}`;
 }
 
-export function montarDpsAssinada(dados, im, cred) {
+export function montarDpsAssinada(dados, im, cred, finNFSe = false) {
   const id = idDps({ serie: dados.rpsSerie || SERIE_NACIONAL, nDps: dados.rpsNumero });
-  return assinar(montarDpsNacional(dados, im), id, cred);
+  return assinar(montarDpsNacional(dados, im, finNFSe), id, cred);
+}
+
+// Padrão por ambiente (NFSE_NACIONAL_FINNFSE=1/0 força). Se o servidor
+// responder E1235 (falha de esquema), emitirNfseNacional tenta o contrário.
+function finNFSePadrao(ambiente) {
+  if (process.env.NFSE_NACIONAL_FINNFSE === '1') return true;
+  if (process.env.NFSE_NACIONAL_FINNFSE === '0') return false;
+  return ambiente === 'homologacao';
 }
 
 const gzipBase64 = (xml) => zlib.gzipSync(Buffer.from(xml, 'utf8'), { level: 9 }).toString('base64');
@@ -278,10 +291,18 @@ function extrairErros(json) {
   const lista = json.erros ?? json.erro ?? [];
   return (Array.isArray(lista) ? lista : [lista])
     .filter(Boolean)
-    .map((e) => ({
-      codigo: String(e.Codigo ?? e.codigo ?? ''),
-      descricao: String(e.Descricao ?? e.descricao ?? e.mensagem ?? e),
-    }));
+    .map((e) => {
+      // Campos além de código/descrição (ex.: complemento com o elemento XML
+      // que falhou no esquema) entram na mensagem — ajudam a diagnosticar.
+      const extras = typeof e === 'object'
+        ? Object.entries(e).filter(([k, v]) => !/^(codigo|descricao|mensagem)$/i.test(k) && v != null && v !== '').map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ')
+        : '';
+      const descricao = String(e.Descricao ?? e.descricao ?? e.mensagem ?? e);
+      return {
+        codigo: String(e.Codigo ?? e.codigo ?? ''),
+        descricao: extras ? `${descricao} (${extras})` : descricao,
+      };
+    });
 }
 
 function mensagemDeFalha(resposta, json, erros) {
@@ -314,25 +335,31 @@ export async function emitirNfseNacional(dados) {
   if (!soDigitos(CARSANT.cnpj)) throw new Error('CNPJ da CARSANT não configurado no servidor (CARSANT_CNPJ).');
 
   let falha = 'Resposta inesperada do Emissor Nacional.';
-  for (const im of variantesInscricaoMunicipal()) {
-    const xml = montarDpsAssinada({ ...dados, ambiente }, im, cred);
-    const resposta = await postarSefin(ambiente, '/nfse', { dpsXmlGZipB64: gzipBase64(xml) }, cred);
-    const json = lerJson(resposta);
-    const erros = extrairErros(json);
+  const finInicial = finNFSePadrao(ambiente);
+  for (const fin of [finInicial, !finInicial]) {
+    let tentarOutroEsquema = false;
+    for (const im of variantesInscricaoMunicipal()) {
+      const xml = montarDpsAssinada({ ...dados, ambiente }, im, cred, fin);
+      const resposta = await postarSefin(ambiente, '/nfse', { dpsXmlGZipB64: gzipBase64(xml) }, cred);
+      const json = lerJson(resposta);
+      const erros = extrairErros(json);
 
-    if (json?.nfseXmlGZipB64 && json?.chaveAcesso && erros.length === 0) {
-      const nfseXml = gunzipBase64(json.nfseXmlGZipB64);
-      return {
-        numero: nfseXml.match(/<nNFSe>(\d+)<\/nNFSe>/)?.[1] || null,
-        chaveAcesso: json.chaveAcesso,
-        dataEmissao: nfseXml.match(/<dhProc>([^<]+)<\/dhProc>/)?.[1] || null,
-        xml: nfseXml,
-        alertas: json.alertas || null,
-      };
+      if (json?.nfseXmlGZipB64 && json?.chaveAcesso && erros.length === 0) {
+        const nfseXml = gunzipBase64(json.nfseXmlGZipB64);
+        return {
+          numero: nfseXml.match(/<nNFSe>(\d+)<\/nNFSe>/)?.[1] || null,
+          chaveAcesso: json.chaveAcesso,
+          dataEmissao: nfseXml.match(/<dhProc>([^<]+)<\/dhProc>/)?.[1] || null,
+          xml: nfseXml,
+          alertas: json.alertas || null,
+        };
+      }
+
+      falha = mensagemDeFalha(resposta, json, erros);
+      if (erros.some((e) => e.codigo === 'E1235')) { tentarOutroEsquema = true; break; }
+      if (!erroDeInscricaoMunicipal(erros)) throw new Error(`Emissor Nacional recusou a emissão: ${falha}`);
     }
-
-    falha = mensagemDeFalha(resposta, json, erros);
-    if (!erroDeInscricaoMunicipal(erros)) break;
+    if (!tentarOutroEsquema) break;
   }
   throw new Error(`Emissor Nacional recusou a emissão: ${falha}`);
 }
