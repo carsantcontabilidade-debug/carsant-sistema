@@ -1043,10 +1043,10 @@ export default function NfseEmitir() {
 
       <div className="border-t border-gray-200 pt-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">Emitir NFS-e — teste (homologação)</h2>
-        <p className="text-sm text-gray-500 mb-4">Ferramenta de teste, sem efeito fiscal. Usa o mesmo emissor das notas reais (hoje o WebISS; o Emissor Nacional entra quando o município aderir — veja o diagnóstico abaixo). A emissão real acontece pela tela de Clientes.</p>
+        <p className="text-sm text-gray-500 mb-4">Ferramenta de teste, sem efeito fiscal. Usa o mesmo emissor das notas reais (o Emissor Nacional) — mas Feira de Santana não existe no ambiente de testes dele, então aqui a recusa E0037 é esperada; teste de verdade com uma nota real pela tela de Clientes.</p>
         <div className="mb-4">
           <button type="button" onClick={consultarConvenioNacional} disabled={diagnosticando} className="btn-secondary btn-sm">
-            {diagnosticando ? 'Consultando...' : 'Diagnóstico: o município já aderiu ao Emissor Nacional?'}
+            {diagnosticando ? 'Consultando...' : 'Diagnóstico: consultar convênio do município no Emissor Nacional'}
           </button>
           {diagnostico && <pre id="diagnostico-nacional" className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs overflow-auto max-h-96 whitespace-pre-wrap break-all">{diagnostico}</pre>}
         </div>

@@ -1,7 +1,7 @@
 // Integração com o Emissor Nacional da NFS-e (Sistema Nacional NFS-e / Sefin
-// Nacional). DESLIGADA por padrão (ver provedorDeEmissao em nfse-emitir.js):
-// em 03/11/2026 o convênio de Feira de Santana tem aderenteEmissorNacional=0,
-// então a API recusa a emissão. Fica pronta para quando o município aderir.
+// Nacional) — emissor padrão das notas da CARSANT desde 01/11/2026, quando o
+// WebISS passou a recusar prestadores do Simples Nacional (L276, Res. CGSN
+// 191/2026). Estrutura da DPS conferida contra uma nota real emitida no portal.
 //
 // Contrato (documentação oficial em gov.br/nfse, "Manual dos Contribuintes —
 // Emissor Público API", e leiaute DPS v1.01):
@@ -48,11 +48,16 @@ const CARSANT = {
   // 17.19.01 — Contabilidade, inclusive serviços técnicos e auxiliares
   // (Lista Nacional de Serviços, Anexo B do manual).
   codigoTributacaoNacional: '171901',
+  // 1.1302.21.00 — Serviços de contabilidade (NBS 2.0), como o portal envia.
+  codigoNbs: '113022100',
   // Percentual aproximado de tributos do Simples Nacional exibido na nota
-  // (Lei 12.741/2012, campo pTotTribSN — obrigatório para ME/EPP). Só
-  // informativo; ajustar na Vercel (CARSANT_PTOTTRIBSN) se a alíquota efetiva
-  // do Simples da CARSANT for outra.
-  pTotTribSN: process.env.CARSANT_PTOTTRIBSN || '6.00',
+  // (Lei 12.741/2012, campo pTotTribSN — obrigatório para ME/EPP). 7,70 é o
+  // valor que o próprio Emissor Nacional calculou para a CARSANT numa nota
+  // real (03/11/2026); ajustável na Vercel (CARSANT_PTOTTRIBSN).
+  pTotTribSN: process.env.CARSANT_PTOTTRIBSN || '7.70',
+  // Contato do prestador, como o portal envia na DPS.
+  fone: '7581101651',
+  email: 'ATENDIMENTO@CARSANTCONTABILIDADE.COM.BR',
 };
 
 function configAmbiente(ambiente) {
@@ -188,12 +193,14 @@ export function montarDpsNacional(dados, im, finNFSe = false) {
       '<prest>' +
         `<CNPJ>${soDigitos(CARSANT.cnpj)}</CNPJ>` +
         (im ? `<IM>${im}</IM>` : '') +
+        `<fone>${CARSANT.fone}</fone>` +
+        `<email>${CARSANT.email}</email>` +
         '<regTrib><opSimpNac>3</opSimpNac><regApTribSN>1</regApTribSN><regEspTrib>0</regEspTrib></regTrib>' +
       '</prest>' +
       montarTomadorXml(dados.tomador) +
       '<serv>' +
         `<locPrest><cLocPrestacao>${CARSANT.codigoMunicipioIbge}</cLocPrestacao></locPrest>` +
-        `<cServ><cTribNac>${CARSANT.codigoTributacaoNacional}</cTribNac><xDescServ>${escapeXml(descricao)}</xDescServ></cServ>` +
+        `<cServ><cTribNac>${CARSANT.codigoTributacaoNacional}</cTribNac><xDescServ>${escapeXml(descricao)}</xDescServ>${finNFSe ? '' : `<cNBS>${CARSANT.codigoNbs}</cNBS>`}</cServ>` +
       '</serv>' +
       '<valores>' +
         `<vServPrest><vServ>${Number(dados.valorServicos).toFixed(2)}</vServ></vServPrest>` +
@@ -315,15 +322,15 @@ function mensagemDeFalha(resposta, json, erros) {
 
 // ─── Emissão ────────────────────────────────────────────────────────────────
 // O cadastro nacional (CNC) decide se a inscrição municipal deve ou não ir na
-// DPS (E0198/E0200) e ela pode estar gravada com zeros à esquerda (E0116).
-// Tenta: IM com 15 dígitos → IM como está → sem IM, só avançando quando o erro
-// fala da inscrição municipal.
+// DPS (E0198/E0200). A nota que o próprio portal emitiu para a CARSANT
+// (03/11/2026) foi SEM IM, então começa sem; só tenta com IM (15 dígitos, ou
+// como está, por causa dos zeros à esquerda — E0116) se o erro falar da
+// inscrição municipal.
 function variantesInscricaoMunicipal() {
   const bruta = soDigitos(CARSANT.inscricaoMunicipal);
   if (!bruta) return [null];
-  const lista = [bruta.padStart(15, '0')];
-  if (bruta !== lista[0]) lista.push(bruta);
-  lista.push(null);
+  const lista = [null, bruta.padStart(15, '0')];
+  if (bruta !== lista[1]) lista.push(bruta);
   return lista;
 }
 
