@@ -167,8 +167,8 @@ export async function gerarDanfsePdf(nota) {
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7)
     if (pdf.getTextWidth(str) <= largura) return str
     let s = str
-    while (s.length > 1 && pdf.getTextWidth(`${s}...`) > largura) s = s.slice(0, -1)
-    return `${s.trimEnd()}...`
+    while (s.length > 1 && pdf.getTextWidth(`${s} ...`) > largura) s = s.slice(0, -1)
+    return `${s} ...`
   }
   const X1 = 11.9, X2 = 156.5, X3 = 301.0, X4 = 445.6
 
