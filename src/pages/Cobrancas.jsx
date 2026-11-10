@@ -104,6 +104,12 @@ export default function Cobrancas() {
   // Também persistido: garante que o filtro restaurado bate com a lista em
   // cache (senão poderia mostrar rapidamente resultados de outro filtro).
   const [filtroStatus, setFiltroStatus] = usePersistedState("carsant_cobrancas_filtroStatus", "todos");
+  // Período: todo o período ou um mês (YYYY-MM), por competência (mes_referencia,
+  // caindo no vencimento quando a cobrança não tem competência) ou por vencimento.
+  const mesAtual = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+  const [filtroMes, setFiltroMes] = usePersistedState("carsant_cobrancas_filtroMes", mesAtual);
+  const [filtroPeriodoTodos, setFiltroPeriodoTodos] = usePersistedState("carsant_cobrancas_periodoTodos", false);
+  const [filtroBaseMes, setFiltroBaseMes] = usePersistedState("carsant_cobrancas_baseMes", "competencia");
   const [loadingClientes, setLoadingClientes] = useState(clientes.length === 0);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
   const primeiraCargaCobrancas = useRef(true);
@@ -169,7 +175,7 @@ export default function Cobrancas() {
   const [envioProcessando, setEnvioProcessando] = useState(null); // 'email' | 'whatsapp' | null
 
   useEffect(() => { carregarClientes(); }, []);
-  useEffect(() => { carregarCobrancas(); setEnvioSelecionados([]); }, [clienteSelecionado, filtroStatus]);
+  useEffect(() => { carregarCobrancas(); setEnvioSelecionados([]); }, [clienteSelecionado, filtroStatus, filtroMes, filtroPeriodoTodos, filtroBaseMes]);
 
   async function carregarClientes() {
     setLoadingClientes(clientes.length === 0);
@@ -195,6 +201,16 @@ export default function Cobrancas() {
       .limit(200);
     if (clienteSelecionado) query = query.eq("cliente_id", clienteSelecionado.id);
     if (filtroStatus !== "todos") query = query.eq("status", filtroStatus);
+    if (!filtroPeriodoTodos && /^\d{4}-\d{2}$/.test(filtroMes)) {
+      const [ano, mes] = filtroMes.split("-").map(Number);
+      const inicio = `${filtroMes}-01`;
+      const fim = `${filtroMes}-${String(new Date(ano, mes, 0).getDate()).padStart(2, "0")}`;
+      if (filtroBaseMes === "vencimento") {
+        query = query.gte("vencimento", inicio).lte("vencimento", fim);
+      } else {
+        query = query.or(`mes_referencia.eq.${filtroMes},and(mes_referencia.is.null,vencimento.gte.${inicio},vencimento.lte.${fim})`);
+      }
+    }
     const { data } = await query;
     setCobrancas(data || []);
     setLoadingCobrancas(false);
@@ -1102,6 +1118,19 @@ export default function Cobrancas() {
               )}
             </div>
             <div className="flex items-center gap-3">
+              <select value={filtroPeriodoTodos ? "todos" : "mes"} onChange={e => setFiltroPeriodoTodos(e.target.value === "todos")} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="mes">Mês específico</option>
+                <option value="todos">Todo o período</option>
+              </select>
+              {!filtroPeriodoTodos && (
+                <>
+                  <input type="month" value={filtroMes} onChange={e => e.target.value && setFiltroMes(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <select value={filtroBaseMes} onChange={e => setFiltroBaseMes(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" title="Como encaixar a cobrança no mês">
+                    <option value="competencia">Por competência</option>
+                    <option value="vencimento">Por vencimento</option>
+                  </select>
+                </>
+              )}
               <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="todos">Todos os status</option>
                 <option value="pendente">Pendente</option>
