@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { enviarEmailTransacional } from './_mailer.js';
+import { enviarEmailTransacional, enviarEmailUol, uolConfigurado } from './_mailer.js';
 import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 
 // Remetente exibido ao cliente: atendimento@ está cadastrado como "Enviar
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Campos obrigatórios: to, subject e text ou html' });
   }
 
-  if (!process.env.TRANSACTIONAL_SMTP_USER || !process.env.TRANSACTIONAL_SMTP_PASS) {
+  if (!uolConfigurado() && (!process.env.TRANSACTIONAL_SMTP_USER || !process.env.TRANSACTIONAL_SMTP_PASS)) {
     return res.status(500).json({
       error: 'Credenciais de SMTP não configuradas no servidor (TRANSACTIONAL_SMTP_USER / TRANSACTIONAL_SMTP_PASS)',
     });
@@ -67,13 +67,28 @@ export default async function handler(req, res) {
       })) : []),
     ];
 
-    const info = await enviarEmailTransacional({
-      to, subject, text, html, attachments,
-      from: EMAIL_ATENDIMENTO,
-      replyTo: EMAIL_ATENDIMENTO,
-    });
+    // 1º UOL (direto de atendimento@); se recusar, Gmail com o mesmo remetente.
+    let info;
+    let via = 'gmail';
+    let motivoFallback;
+    if (uolConfigurado()) {
+      try {
+        info = await enviarEmailUol({ to, subject, text, html, attachments, replyTo: EMAIL_ATENDIMENTO });
+        via = 'uol';
+      } catch (errUol) {
+        motivoFallback = errUol.message;
+        console.warn('SMTP do UOL falhou, usando o Gmail:', errUol.message);
+      }
+    }
+    if (!info) {
+      info = await enviarEmailTransacional({
+        to, subject, text, html, attachments,
+        from: EMAIL_ATENDIMENTO,
+        replyTo: EMAIL_ATENDIMENTO,
+      });
+    }
 
-    return res.status(200).json({ success: true, messageId: info.messageId });
+    return res.status(200).json({ success: true, messageId: info.messageId, via, motivoFallback });
   } catch (error) {
     console.error('Erro ao enviar e-mail via SMTP:', error);
     return res.status(502).json({

@@ -16,6 +16,36 @@ function buildTransportTransacional() {
   });
 }
 
+// SMTP do UOL Host (caixa atendimento@, SMTP_USER/SMTP_PASS). Tentado primeiro
+// no envio de cobrança/nota: sai direto do domínio, com o SPF do UOL a favor.
+// Já recusou conexões vindas da Vercel (554 5.7.1), por isso send-email.js cai
+// no Gmail quando falha. Timeouts curtos para o fallback não estourar o limite.
+export function uolConfigurado() {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+export async function enviarEmailUol({ to, subject, text, html, attachments, replyTo }) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtps.uhserver.com',
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: Number(process.env.SMTP_PORT || 587) === 465,
+    requireTLS: Number(process.env.SMTP_PORT || 587) !== 465,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 40000,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  return transporter.sendMail({
+    from: `"CARSANT Contabilidade" <${process.env.SMTP_USER}>`,
+    replyTo: replyTo || undefined,
+    to,
+    subject,
+    text: text || undefined,
+    html: html || undefined,
+    attachments: attachments || undefined,
+  });
+}
+
 // `from`/`replyTo` opcionais: o Gmail só mantém um remetente diferente da
 // conta autenticada se ele estiver cadastrado como "Enviar e-mail como" nas
 // configurações do Gmail; senão troca por conta própria pelo endereço do Gmail.
