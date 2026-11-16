@@ -918,8 +918,20 @@ export default function Cobrancas() {
     } catch (e) {
       console.warn("Não foi possível gerar o link do boleto para o e-mail:", e.message);
     }
+    // O UOL (atendimento@) recusa e-mails com link *.vercel.app (554 5.7.1,
+    // confirmado em teste de 2026-11-16); HTML, PDF anexo e link de domínio próprio
+    // passam. Com o boleto em PDF anexado o link é redundante, então só entra
+    // no corpo quando não há PDF (nesse caso o envio cai no Gmail se o UOL recusar).
+    let attachmentBase64 = null;
+    try {
+      attachmentBase64 = await buscarPdfBase64(cob);
+    } catch (pdfErr) {
+      console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
+    }
+
+    const linkNoCorpo = attachmentBase64 ? "" : linkBoleto;
     const assunto = `CARSANT Contabilidade — ${cob.descricao}`;
-    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkBoleto ? `Boleto para visualização/impressão:\n${linkBoleto}\n\n` : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\n${rotuloVerificacao(notaFiscal.codigo_verificacao, true)}: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nSegue a cobrança referente a ${cob.descricao}.\n\nValor: ${formatarValor(cob.valor)}\nVencimento: ${formatarData(cob.vencimento)}\n\n${cob.pix_copia_cola ? `Pix Copia e Cola:\n${cob.pix_copia_cola}\n\n` : ""}${linkNoCorpo ? `Boleto para visualização/impressão:\n${linkNoCorpo}\n\n` : ""}${attachmentBase64 ? "O boleto segue em anexo (PDF).\n\n" : ""}${notaFiscal ? `NFS-e nº ${notaFiscal.numero_nfse}\n${rotuloVerificacao(notaFiscal.codigo_verificacao, true)}: ${notaFiscal.codigo_verificacao}\n\n` : ""}Em caso de dúvidas, entre em contato.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
 
     // QR Code gerado a partir do próprio texto do Pix (o Inter só devolve o
     // copia-e-cola, não uma imagem pronta) — não altera nada no código, só
@@ -943,18 +955,12 @@ export default function Cobrancas() {
       `<p><strong>Valor:</strong> ${escapeHtml(formatarValor(cob.valor))}<br><strong>Vencimento:</strong> ${escapeHtml(formatarData(cob.vencimento))}</p>` +
       (qrCodeBase64 ? `<p><strong>Pague com Pix (aponte a câmera do banco):</strong><br><img src="cid:pixqrcode" alt="QR Code Pix" width="200" height="200" /></p>` : "") +
       (cob.pix_copia_cola ? `<p><strong>Ou Pix Copia e Cola:</strong><br><code style="display:block; background:#f5f5f5; padding:10px; border-radius:6px; word-break:break-all; font-size:12px;">${htmlSemLinkAutomatico(cob.pix_copia_cola)}</code></p>` : "") +
-      (linkBoleto ? `<p><a href="${linkBoleto}">Boleto para visualização/impressão</a></p>` : "") +
+      (linkNoCorpo ? `<p><a href="${linkNoCorpo}">Boleto para visualização/impressão</a></p>` : "") +
+      (attachmentBase64 ? `<p>O boleto segue em anexo (PDF).</p>` : "") +
       (notaFiscal ? `<p><strong>NFS-e nº ${escapeHtml(notaFiscal.numero_nfse)}</strong><br>${rotuloVerificacao(notaFiscal.codigo_verificacao, true)}: ${escapeHtml(notaFiscal.codigo_verificacao)}</p>` : "") +
       `<p>Em caso de dúvidas, entre em contato.</p>` +
       `<p>Atenciosamente,<br>Equipe CARSANT Contabilidade<br>Feira de Santana, BA</p>` +
     `</div>`;
-
-    let attachmentBase64 = null;
-    try {
-      attachmentBase64 = await buscarPdfBase64(cob);
-    } catch (pdfErr) {
-      console.warn("Não foi possível anexar o boleto em PDF:", pdfErr.message);
-    }
 
     const { data: { session } } = await supabase.auth.getSession();
     const resp = await fetch("/api/send-email", {
