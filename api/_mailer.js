@@ -24,6 +24,42 @@ export function uolConfigurado() {
   return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+// O SMTP só entrega: a cópia na pasta "Enviados" do UOL precisa ser gravada à
+// parte, por IMAP. Falha aqui nunca derruba o envio — vira só um aviso.
+const PASTAS_ENVIADOS = ['Enviados', 'Sent', 'INBOX.Sent', 'Itens Enviados', 'Sent Items', 'INBOX.Enviados'];
+
+async function salvarCopiaEnviados(mail, info) {
+  let client;
+  const tarefa = (async () => {
+    const { ImapFlow } = await import('imapflow');
+    const { default: MailComposer } = await import('nodemailer/lib/mail-composer/index.js');
+    const raw = await new MailComposer({ ...mail, messageId: info.messageId, date: new Date() }).compile().build();
+    client = new ImapFlow({
+      host: process.env.IMAP_HOST || 'imap.uhserver.com',
+      port: Number(process.env.IMAP_PORT || 993),
+      secure: true,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      logger: false,
+    });
+    await client.connect();
+    const pastas = await client.list();
+    const pasta = pastas.find((p) => p.specialUse === '\\Sent')?.path
+      || PASTAS_ENVIADOS.find((n) => pastas.some((p) => p.path === n));
+    if (!pasta) throw new Error('pasta Enviados não encontrada (' + pastas.map((p) => p.path).join(', ') + ')');
+    await client.append(pasta, raw, ['\\Seen']);
+    await client.logout();
+    return { ok: true, pasta };
+  })();
+  const limite = new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado ao gravar em Enviados')), 15000));
+  try {
+    return await Promise.race([tarefa, limite]);
+  } catch (e) {
+    try { client?.close(); } catch { /* ignora */ }
+    console.warn('Cópia em Enviados do UOL não gravada:', e.message);
+    return { ok: false, erro: e.message };
+  }
+}
+
 export async function enviarEmailUol({ to, subject, text, html, attachments, replyTo }) {
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtps.uhserver.com',
@@ -35,7 +71,7 @@ export async function enviarEmailUol({ to, subject, text, html, attachments, rep
     socketTimeout: 40000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
-  return transporter.sendMail({
+  const mail = {
     from: `"CARSANT Contabilidade" <${process.env.SMTP_USER}>`,
     replyTo: replyTo || undefined,
     to,
@@ -43,7 +79,10 @@ export async function enviarEmailUol({ to, subject, text, html, attachments, rep
     text: text || undefined,
     html: html || undefined,
     attachments: attachments || undefined,
-  });
+  };
+  const info = await transporter.sendMail(mail);
+  info.copia = await salvarCopiaEnviados(mail, info);
+  return info;
 }
 
 // E-mail ao cliente em nome da CARSANT: tenta o UOL (atendimento@) e, se

@@ -69,7 +69,7 @@ export default async function handler(req, res) {
     // 1º UOL (direto de atendimento@); se recusar, Gmail com o mesmo remetente.
     const { info, via, motivoFallback } = await enviarEmailInstitucional({ to, subject, text, html, attachments });
 
-    return res.status(200).json({ success: true, messageId: info.messageId, via, motivoFallback });
+    return res.status(200).json({ success: true, messageId: info.messageId, via, motivoFallback, copia: info.copia });
   } catch (error) {
     console.error('Erro ao enviar e-mail via SMTP:', error);
     return res.status(502).json({

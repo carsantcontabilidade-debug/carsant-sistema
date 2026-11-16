@@ -979,7 +979,7 @@ export default function Cobrancas() {
     if (!resp.ok) {
       throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
     }
-    return { email, comAnexo: !!attachmentBase64, via: data.via, motivoFallback: data.motivoFallback };
+    return { email, comAnexo: !!attachmentBase64, via: data.via, motivoFallback: data.motivoFallback, copia: data.copia };
   }
 
   async function abrirEmail(cob) {
@@ -987,8 +987,8 @@ export default function Cobrancas() {
     setSucesso("");
     setProcessando(true);
     try {
-      const { email, comAnexo, via, motivoFallback } = await enviarEmailCobrancaSilencioso(cob);
-      setSucesso(`E-mail enviado para ${email}${comAnexo ? " (com boleto em PDF anexado)" : ""} — saiu pelo ${via === "uol" ? "UOL (atendimento@)" : "Gmail"}${motivoFallback ? ` (UOL recusou: ${motivoFallback})` : ""}`);
+      const { email, comAnexo, via, motivoFallback, copia } = await enviarEmailCobrancaSilencioso(cob);
+      setSucesso(`E-mail enviado para ${email}${comAnexo ? " (com boleto em PDF anexado)" : ""} — saiu pelo ${via === "uol" ? "UOL (atendimento@)" : "Gmail"}${motivoFallback ? ` (UOL recusou: ${motivoFallback})` : ""}${via === "uol" ? (copia?.ok ? ` · cópia gravada em "${copia.pasta}"` : ` · cópia em Enviados NÃO gravada${copia?.erro ? ` (${copia.erro})` : ""}`) : ""}`);
       setTimeout(() => setSucesso(""), 10000);
     } catch (e) {
       setErro(`Erro ao enviar e-mail: ${e.message}`);
