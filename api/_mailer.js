@@ -46,6 +46,25 @@ export async function enviarEmailUol({ to, subject, text, html, attachments, rep
   });
 }
 
+// E-mail ao cliente em nome da CARSANT: tenta o UOL (atendimento@) e, se
+// recusar, cai no Gmail com o mesmo remetente. Devolve por onde saiu.
+export const EMAIL_ATENDIMENTO = 'atendimento@carsantcontabilidade.com.br';
+
+export async function enviarEmailInstitucional({ to, subject, text, html, attachments }) {
+  let motivoFallback;
+  if (uolConfigurado()) {
+    try {
+      const info = await enviarEmailUol({ to, subject, text, html, attachments, replyTo: EMAIL_ATENDIMENTO });
+      return { info, via: 'uol' };
+    } catch (errUol) {
+      motivoFallback = errUol.message;
+      console.warn('SMTP do UOL falhou, usando o Gmail:', errUol.message);
+    }
+  }
+  const info = await enviarEmailTransacional({ to, subject, text, html, attachments, from: EMAIL_ATENDIMENTO, replyTo: EMAIL_ATENDIMENTO });
+  return { info, via: 'gmail', motivoFallback };
+}
+
 // `from`/`replyTo` opcionais: o Gmail só mantém um remetente diferente da
 // conta autenticada se ele estiver cadastrado como "Enviar e-mail como" nas
 // configurações do Gmail; senão troca por conta própria pelo endereço do Gmail.

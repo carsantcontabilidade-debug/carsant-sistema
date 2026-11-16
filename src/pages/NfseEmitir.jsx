@@ -402,7 +402,7 @@ export default function NfseEmitir() {
       })
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.error || data.detail || 'Falha ao enviar e-mail')
-      alert(`E-mail enviado para ${nota.clientes.email} com PDF e XML anexados.`)
+      alert(`E-mail enviado para ${nota.clientes.email} com PDF e XML anexados.\nSaiu pelo ${data.via === 'uol' ? 'UOL (atendimento@)' : 'Gmail'}${data.motivoFallback ? ` — o UOL recusou: ${data.motivoFallback}` : ''}.`)
     } catch (err) {
       alert(`Erro ao enviar: ${err.message}`)
     } finally {

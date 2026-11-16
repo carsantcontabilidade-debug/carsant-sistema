@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-import { enviarEmailTransacional, enviarEmailUol, uolConfigurado } from './_mailer.js';
+import { enviarEmailInstitucional, uolConfigurado } from './_mailer.js';
 import { buscarPerfil, ERRO_VERIFICAR_PERMISSAO } from './_perfil.js';
 
 // Remetente exibido ao cliente: atendimento@ está cadastrado como "Enviar
 // e-mail como" no Gmail da CARSANT (2026-10-08), então o Gmail mantém esse
 // endereço; replyTo garante que a resposta do cliente volte pra ele.
-const EMAIL_ATENDIMENTO = 'atendimento@carsantcontabilidade.com.br';
 
 // Envia e-mail em nome da CARSANT via SMTP próprio — usado por telas
 // internas (Cobrancas, Notas Fiscais, Atendimento) pra mandar boleto/nota
@@ -68,25 +67,7 @@ export default async function handler(req, res) {
     ];
 
     // 1º UOL (direto de atendimento@); se recusar, Gmail com o mesmo remetente.
-    let info;
-    let via = 'gmail';
-    let motivoFallback;
-    if (uolConfigurado()) {
-      try {
-        info = await enviarEmailUol({ to, subject, text, html, attachments, replyTo: EMAIL_ATENDIMENTO });
-        via = 'uol';
-      } catch (errUol) {
-        motivoFallback = errUol.message;
-        console.warn('SMTP do UOL falhou, usando o Gmail:', errUol.message);
-      }
-    }
-    if (!info) {
-      info = await enviarEmailTransacional({
-        to, subject, text, html, attachments,
-        from: EMAIL_ATENDIMENTO,
-        replyTo: EMAIL_ATENDIMENTO,
-      });
-    }
+    const { info, via, motivoFallback } = await enviarEmailInstitucional({ to, subject, text, html, attachments });
 
     return res.status(200).json({ success: true, messageId: info.messageId, via, motivoFallback });
   } catch (error) {

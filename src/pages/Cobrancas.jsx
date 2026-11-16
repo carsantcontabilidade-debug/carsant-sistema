@@ -650,8 +650,33 @@ export default function Cobrancas() {
     setProcessando(false);
   }
 
+  // Avisa o cliente por e-mail que a cobrança foi cancelada (boleto/Pix deixam de valer).
+  async function enviarEmailCancelamento(cob) {
+    const email = cob.clientes?.["email"] || "";
+    if (!email) throw new Error("Cliente sem e-mail cadastrado.");
+    const assunto = `CARSANT Contabilidade — Cobrança cancelada: ${cob.descricao}`;
+    const corpo = `Prezado(a) ${cob.clientes?.nome},\n\nInformamos que a cobrança referente a ${cob.descricao}, no valor de ${formatarValor(cob.valor)} e vencimento em ${formatarData(cob.vencimento)}, foi CANCELADA.\n\nO boleto e o Pix dessa cobrança deixaram de valer — não é necessário efetuar o pagamento. Caso já tenha pago, ou em caso de dúvidas, entre em contato conosco.\n\nAtenciosamente,\nEquipe CARSANT Contabilidade\nFeira de Santana, BA`;
+    const corpoHtml = `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">` +
+      `<p>Prezado(a) ${escapeHtml(cob.clientes?.nome)},</p>` +
+      `<p>Informamos que a cobrança referente a ${escapeHtml(cob.descricao)}, no valor de <strong>${escapeHtml(formatarValor(cob.valor))}</strong> e vencimento em ${escapeHtml(formatarData(cob.vencimento))}, foi <strong>cancelada</strong>.</p>` +
+      `<p>O boleto e o Pix dessa cobrança deixaram de valer — não é necessário efetuar o pagamento. Caso já tenha pago, ou em caso de dúvidas, entre em contato conosco.</p>` +
+      `<p>Atenciosamente,<br>Equipe CARSANT Contabilidade<br>Feira de Santana, BA</p>` +
+    `</div>`;
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ to: email, subject: assunto, text: corpo, html: corpoHtml }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || data.error || "Falha ao enviar e-mail");
+    return { email, via: data.via };
+  }
+
   async function cancelarCobranca(cobranca) {
     if (!confirm("Confirmar cancelamento desta cobrança?")) return;
+    const emailCliente = cobranca.clientes?.["email"];
+    const avisarCliente = !!emailCliente && confirm(`Avisar o cliente por e-mail (${emailCliente}) que a cobrança foi cancelada?\n\nOK = cancelar e enviar o aviso · Cancelar = cancelar sem avisar`);
     setProcessando(true);
     try {
       await chamarEdgeFunction("cancelar_cobranca", {
@@ -668,7 +693,16 @@ export default function Cobrancas() {
       }
       setModalAberto(false);
       carregarCobrancas();
-      setSucesso("Cobrança cancelada.");
+      let aviso = "";
+      if (avisarCliente) {
+        try {
+          const { email } = await enviarEmailCancelamento(cobranca);
+          aviso = ` Aviso enviado para ${email}.`;
+        } catch (eEmail) {
+          aviso = ` Mas o aviso por e-mail falhou: ${eEmail.message}`;
+        }
+      }
+      setSucesso(`Cobrança cancelada.${aviso}`);
     } catch (e) {
       setErro(`Erro ao cancelar: ${e.message}`);
     }
@@ -970,10 +1004,14 @@ export default function Cobrancas() {
     setSucesso("");
     setEnvioProcessando("email");
     let ok = 0;
+    let pelaUol = 0;
+    let motivoUol = "";
     const falhas = [];
     for (const cob of alvos) {
       try {
-        await enviarEmailCobrancaSilencioso(cob);
+        const r = await enviarEmailCobrancaSilencioso(cob);
+        if (r.via === "uol") pelaUol++;
+        else if (r.motivoFallback) motivoUol = r.motivoFallback;
         ok++;
       } catch (e) {
         falhas.push(`${cob.clientes?.nome}: ${e.message}`);
@@ -981,7 +1019,7 @@ export default function Cobrancas() {
     }
     setEnvioProcessando(null);
     setEnvioSelecionados([]);
-    setSucesso(`${ok} de ${alvos.length} e-mail(s) enviado(s) com sucesso (cobrança + nota fiscal, quando houver).`);
+    setSucesso(`${ok} de ${alvos.length} e-mail(s) enviado(s) com sucesso (cobrança + nota fiscal, quando houver). ${pelaUol} pelo UOL (atendimento@), ${ok - pelaUol} pelo Gmail${motivoUol ? ` — UOL recusou: ${motivoUol}` : ""}.`);
     if (falhas.length) setErro(`Falha em ${falhas.length}: ${falhas.join(" | ")}`);
   }
 
@@ -1017,11 +1055,15 @@ export default function Cobrancas() {
       return;
     }
     if (!confirm(`Confirmar cancelamento de ${alvos.length} cobrança(s) no Banco Inter? Esta ação não pode ser desfeita.`)) return;
+    const alvosComEmail = alvos.filter(c => c.clientes?.["email"]);
+    const avisarClientes = alvosComEmail.length > 0 && confirm(`Avisar por e-mail os clientes que tiveram a cobrança cancelada?\n\n${alvosComEmail.length} de ${alvos.length} cobrança(s) têm e-mail cadastrado.\n\nOK = cancelar e enviar os avisos · Cancelar = cancelar sem avisar`);
     setErro("");
     setSucesso("");
     setEnvioProcessando("cancelar");
     let ok = 0;
+    let avisosOk = 0;
     const falhas = [];
+    const falhasAviso = [];
     for (const cob of alvos) {
       try {
         await chamarEdgeFunction("cancelar_cobranca", {
@@ -1037,13 +1079,26 @@ export default function Cobrancas() {
         ok++;
       } catch (e) {
         falhas.push(`${cob.clientes?.nome}: ${e.message}`);
+        continue;
+      }
+      if (avisarClientes && cob.clientes?.["email"]) {
+        try {
+          await enviarEmailCancelamento(cob);
+          avisosOk++;
+        } catch (eEmail) {
+          falhasAviso.push(`${cob.clientes?.nome}: ${eEmail.message}`);
+        }
       }
     }
     setEnvioProcessando(null);
     setEnvioSelecionados([]);
     carregarCobrancas();
-    setSucesso(`${ok} de ${alvos.length} cobrança(s) cancelada(s) com sucesso.`);
-    if (falhas.length) setErro(`Falha em ${falhas.length}: ${falhas.join(" | ")}`);
+    setSucesso(`${ok} de ${alvos.length} cobrança(s) cancelada(s) com sucesso.${avisarClientes ? ` ${avisosOk} aviso(s) enviado(s) por e-mail.` : ""}`);
+    const problemas = [
+      ...(falhas.length ? [`Falha em ${falhas.length}: ${falhas.join(" | ")}`] : []),
+      ...(falhasAviso.length ? [`Aviso por e-mail não enviado a ${falhasAviso.length}: ${falhasAviso.join(" | ")}`] : []),
+    ];
+    if (problemas.length) setErro(problemas.join(" — "));
   }
 
   // Totais

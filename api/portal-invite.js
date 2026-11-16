@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { enviarEmailTransacional } from './_mailer.js';
+import { enviarEmailInstitucional } from './_mailer.js';
 
 // Convida um cliente para o Portal do Cliente. Só um gestor autenticado
 // pode chamar este endpoint. Usa a service role key (nunca exposta ao
@@ -166,7 +166,7 @@ export default async function handler(req, res) {
   const { assunto, html } = corpoEmail({ nome: cliente.nome, link: linkParaEmail, reenvio });
 
   try {
-    await enviarEmailTransacional({ to: cliente.email, subject: assunto, html });
+    await enviarEmailInstitucional({ to: cliente.email, subject: assunto, html });
   } catch (err) {
     return res.status(502).json({ error: `Link gerado, mas falhou ao enviar o e-mail: ${err.message}` });
   }
