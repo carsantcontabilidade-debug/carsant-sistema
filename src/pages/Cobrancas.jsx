@@ -42,6 +42,17 @@ const FORMA_PAGAMENTO_LABEL = {
   outro: "Outro",
 };
 
+// O Inter só avisa "ATRASADO" quando sincronizamos; enquanto isso a cobrança
+// ficava "Gerada" mesmo vencida. Status efetivo: "gerada" com vencimento
+// anterior a hoje (data de Brasília) conta como "vencida".
+function hojeBrasilIso() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+function statusEfetivo(c) {
+  if (c.status === "gerada" && c.vencimento && String(c.vencimento).slice(0, 10) < hojeBrasilIso()) return "vencida";
+  return c.status;
+}
+
 const STATUS_PENDENTES_DE_BAIXA = ["pendente", "gerada", "vencida", "erro"];
 
 function formatarValor(v) {
@@ -200,7 +211,9 @@ export default function Cobrancas() {
       .order("created_at", { ascending: false })
       .limit(200);
     if (clienteSelecionado) query = query.eq("cliente_id", clienteSelecionado.id);
-    if (filtroStatus !== "todos") query = query.eq("status", filtroStatus);
+    // "Gerada" e "Vencida" dependem da data de vencimento: busca as duas e filtra depois.
+    if (filtroStatus === "gerada" || filtroStatus === "vencida") query = query.in("status", ["gerada", "vencida"]);
+    else if (filtroStatus !== "todos") query = query.eq("status", filtroStatus);
     if (!filtroPeriodoTodos && /^\d{4}-\d{2}$/.test(filtroMes)) {
       const [ano, mes] = filtroMes.split("-").map(Number);
       const inicio = `${filtroMes}-01`;
@@ -212,7 +225,8 @@ export default function Cobrancas() {
       }
     }
     const { data } = await query;
-    setCobrancas(data || []);
+    const lista = (data || []).filter(c => (filtroStatus === "gerada" || filtroStatus === "vencida") ? statusEfetivo(c) === filtroStatus : true);
+    setCobrancas(lista);
     setLoadingCobrancas(false);
   }
 
@@ -1108,9 +1122,9 @@ export default function Cobrancas() {
   }
 
   // Totais
-  const totalGeradas = cobrancas.filter(c => c.status === "gerada").reduce((s, c) => s + Number(c.valor), 0);
+  const totalGeradas = cobrancas.filter(c => statusEfetivo(c) === "gerada").reduce((s, c) => s + Number(c.valor), 0);
   const totalPagas = cobrancas.filter(c => c.status === "paga").reduce((s, c) => s + Number(c.valor), 0);
-  const totalVencidas = cobrancas.filter(c => c.status === "vencida").reduce((s, c) => s + Number(c.valor), 0);
+  const totalVencidas = cobrancas.filter(c => statusEfetivo(c) === "vencida").reduce((s, c) => s + Number(c.valor), 0);
 
   const clientesFiltrados = clientes.filter(c => c.nome.toLowerCase().includes(busca.toLowerCase()));
 
@@ -1298,8 +1312,8 @@ export default function Cobrancas() {
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <div className="font-bold text-gray-800">{formatarValor(cob.valor)}</div>
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_INFO[cob.status]?.cor || "bg-gray-100 text-gray-600"}`}>
-                        {STATUS_INFO[cob.status]?.label || cob.status}
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_INFO[statusEfetivo(cob)]?.cor || "bg-gray-100 text-gray-600"}`}>
+                        {STATUS_INFO[statusEfetivo(cob)]?.label || cob.status}
                       </span>
                     </div>
                   </div>
@@ -1325,7 +1339,7 @@ export default function Cobrancas() {
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div><label className="text-xs text-gray-500 uppercase">Cliente</label><p className="font-medium mt-1">{cobrancaAtual.clientes?.nome}</p></div>
-                  <div><label className="text-xs text-gray-500 uppercase">Status</label><p className="mt-1"><span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_INFO[cobrancaAtual.status]?.cor}`}>{STATUS_INFO[cobrancaAtual.status]?.label}</span></p></div>
+                  <div><label className="text-xs text-gray-500 uppercase">Status</label><p className="mt-1"><span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_INFO[statusEfetivo(cobrancaAtual)]?.cor}`}>{STATUS_INFO[statusEfetivo(cobrancaAtual)]?.label}</span></p></div>
                   <div><label className="text-xs text-gray-500 uppercase">Valor</label><p className="font-bold text-lg text-gray-800 mt-1">{formatarValor(cobrancaAtual.valor)}</p></div>
                   <div><label className="text-xs text-gray-500 uppercase">Vencimento</label><p className="font-medium mt-1">{formatarData(cobrancaAtual.vencimento)}</p></div>
                   <div className="col-span-2"><label className="text-xs text-gray-500 uppercase">Descrição</label><p className="font-medium mt-1">{cobrancaAtual.descricao}</p></div>
@@ -1368,7 +1382,7 @@ export default function Cobrancas() {
                       🖨️ Ver boleto
                     </button>
                   )}
-                  {cobrancaAtual.status === "gerada" && (
+                  {["gerada", "vencida"].includes(cobrancaAtual.status) && (
                     <>
                       {/* "Copiar mensagem" não depende de telefone/e-mail
                           cadastrado — o Ronaldo pode colar em qualquer canal

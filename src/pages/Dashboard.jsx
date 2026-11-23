@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { statusCertidao } from '../lib/certidoes'
 import { format } from 'date-fns'
+import { situacaoHonorario } from '../lib/honorarios'
 import { ptBR } from 'date-fns/locale'
 
 export default function Dashboard() {
@@ -80,15 +81,14 @@ export default function Dashboard() {
   // KPIs
   // Cliente "Temporário" (serviço avulso/campanha) não tem mensalidade — fora
   // dos totais e da inadimplência mensal.
-  const clientesRecorrentes = clientes.filter(c => c.tipo !== 'temporario')
-  const totalHonorarios = clientesRecorrentes.reduce((s, c) => s + (c.valor_honorario || 0), 0)
-  const inadimplentes = clientesRecorrentes.filter(c => {
-    if (!(c.valor_honorario > 0)) return false
-    const pago = pagamentos.find(p => p.cliente_id === c.id)?.pago || cobrancasPagas.some(x => x.cliente_id === c.id)
-    if (pago) return false
-    const venc = new Date(anoAtual, mesAtual, c.dia_vencimento || 10)
-    return hoje > venc
-  })
+  // Mesma regra da tela de Honorários: só clientes com mensalidade, e
+  // isentos / ocultos / que ainda não começaram a ser cobrados ficam de fora.
+  const cobrancasPagasIds = new Set(cobrancasPagas.map(x => x.cliente_id))
+  const comMensalidade = clientes.filter(c => c.tipo !== 'temporario' && c.valor_honorario > 0)
+  const situacaoDe = (c) => situacaoHonorario(c, { pagamentos, cobrancasPagasIds, ano: anoAtual, mes: mesAtual, hoje })
+  const clientesCobraveis = comMensalidade.filter(c => !['isento', 'oculto', 'fora_periodo'].includes(situacaoDe(c)))
+  const totalHonorarios = clientesCobraveis.reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const inadimplentes = clientesCobraveis.filter(c => situacaoDe(c) === 'atraso')
   const tarefasAtrasadas = tarefas.filter(t => t.status === 'atrasada')
   const tarefasMinhas = isGestor ? tarefas : tarefas.filter(t => t.responsavel === profile?.nome)
   const eventosProximos = eventos.filter(e => e.data >= hojeStr && e.data <= hoje7Str)
@@ -185,7 +185,7 @@ export default function Dashboard() {
             <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
               <div className="stat-label">Total honorários/mês</div>
               <div className="stat-value text-brand-700">{fmt(totalHonorarios)}</div>
-              <div className="stat-sub">{clientes.length} clientes</div>
+              <div className="stat-sub">{clientesCobraveis.length} clientes</div>
             </div>
             <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/honorarios')}>
               <div className="stat-label">Em atraso</div>
