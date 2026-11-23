@@ -25,7 +25,7 @@ export default function Dashboard() {
   async function carregarDados() {
     setLoading(true)
     const mesReferencia = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`
-    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas] = await Promise.all([
+    const [clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas, pagamentosDespesas] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('tarefas').select('*'),
@@ -36,6 +36,8 @@ export default function Dashboard() {
       supabase.from('certidoes').select('cliente_id, tipo, data_validade, created_at'),
       // Honorário pago via Cobranças não gera registro em pagamentos_honorarios.
       supabase.from('cobrancas').select('cliente_id').eq('tipo', 'honorario').eq('status', 'paga').eq('mes_referencia', mesReferencia),
+      // Despesas pagas no mês (mesma tabela de Contas a Pagar).
+      supabase.from('pagamentos_despesas').select('despesa_id, pago').eq('mes', mesAtual).eq('ano', anoAtual),
     ])
     setData({
       clientes: clientes.data || [],
@@ -47,6 +49,7 @@ export default function Dashboard() {
       conversas: conversas.data || [],
       certidoes: certidoes.data || [],
       cobrancasPagas: cobrancasPagas.data || [],
+      pagamentosDespesas: pagamentosDespesas.data || [],
     })
     setLoading(false)
   }
@@ -57,7 +60,7 @@ export default function Dashboard() {
     </div>
   )
 
-  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas } = data
+  const { clientes, despesas, tarefas, atendimentos, eventos, pagamentos, conversas, certidoes, cobrancasPagas, pagamentosDespesas } = data
   const hoje7 = new Date(); hoje7.setDate(hoje7.getDate() + 7)
   const hojeStr = format(hoje, 'yyyy-MM-dd')
   const hoje7Str = format(hoje7, 'yyyy-MM-dd')
@@ -93,8 +96,12 @@ export default function Dashboard() {
   const tarefasMinhas = isGestor ? tarefas : tarefas.filter(t => t.responsavel === profile?.nome)
   const eventosProximos = eventos.filter(e => e.data >= hojeStr && e.data <= hoje7Str)
 
-  const totalDespesas = despesas.filter(d => d.recorrencia === 'mensal').reduce((s, d) => s + (d.valor || 0), 0)
-  const saldo = totalHonorarios - totalDespesas
+  // Saldo real do mês: honorários já recebidos (mesma conta de Honorários) menos
+  // as despesas já pagas (Contas a Pagar).
+  const recebido = clientesCobraveis.filter(c => situacaoDe(c) === 'pago').reduce((s, c) => s + (c.valor_honorario || 0), 0)
+  const despesasPagasIds = new Set(pagamentosDespesas.filter(p => p.pago).map(p => p.despesa_id))
+  const totalDespesas = despesas.filter(d => despesasPagasIds.has(d.id)).reduce((s, d) => s + (d.valor || 0), 0)
+  const saldo = recebido - totalDespesas
 
   const statusColor = { pago: 'badge-green', pendente: 'badge-yellow', atraso: 'badge-red', concluida: 'badge-green', andamento: 'badge-blue', atrasada: 'badge-red' }
   const statusLabel = { pago: 'Pago', pendente: 'Pendente', atraso: 'Em atraso', concluida: 'Concluída', andamento: 'Andamento', atrasada: 'Atrasada' }
@@ -169,7 +176,7 @@ export default function Dashboard() {
         <div className={`rounded-2xl p-6 mb-6 flex items-center justify-between ${saldo >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
           <div>
             <p className="text-sm font-medium text-gray-600">Saldo do mês — {format(hoje, 'MMMM/yyyy', { locale: ptBR })}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Honorários ({fmt(totalHonorarios)}) − Despesas ({fmt(totalDespesas)})</p>
+            <p className="text-xs text-gray-500 mt-0.5">Recebido ({fmt(recebido)}) − Despesas pagas ({fmt(totalDespesas)}) · a receber: {fmt(totalHonorarios - recebido)}</p>
           </div>
           <div className={`text-3xl font-bold flex items-center gap-2 ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
             {saldo >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
