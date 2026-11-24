@@ -30,6 +30,39 @@ import { consultarCobrancaReal, mapearSituacaoInter } from './_inter.js';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Rede de segurança: o webhook do Inter pode se perder (aviso não entregue,
+// falha nossa) e a cobrança paga ficava "gerada/vencida" para sempre. Esta
+// conferência reconsulta no Inter as cobranças em aberto e corrige o status.
+// Roda 1x por dia (cron da Vercel); o botão "Sincronizar com o Inter" da tela
+// de Cobranças faz o mesmo sob demanda.
+async function sincronizarAbertas(admin, orcamentoMs = 50000) {
+  const inicio = Date.now();
+  const { data: abertas } = await admin
+    .from('cobrancas')
+    .select('id, status, codigo_solicitacao')
+    .in('status', ['gerada', 'vencida'])
+    .not('codigo_solicitacao', 'is', null)
+    .order('vencimento', { ascending: true });
+  let verificadas = 0;
+  let atualizadas = 0;
+  for (const cob of abertas || []) {
+    if (Date.now() - inicio > orcamentoMs) break;
+    try {
+      const resultado = await consultarCobrancaReal(cob.codigo_solicitacao);
+      const novoStatus = mapearSituacaoInter(resultado.situacao);
+      verificadas++;
+      if (novoStatus === cob.status) continue;
+      const payload = { status: novoStatus, paga_em: novoStatus === 'paga' ? new Date().toISOString() : null };
+      if (novoStatus === 'paga') payload.forma_pagamento = 'inter';
+      await admin.from('cobrancas').update(payload).eq('id', cob.id);
+      atualizadas++;
+    } catch (err) {
+      console.warn('Sincronização: falha ao consultar', cob.codigo_solicitacao, err?.message || err);
+    }
+  }
+  return { total: (abertas || []).length, verificadas, atualizadas };
+}
+
 async function processarAviso(admin, aviso) {
   const codigoSolicitacao = aviso?.codigoSolicitacao;
   if (!codigoSolicitacao) return;
@@ -54,6 +87,18 @@ async function processarAviso(admin, aviso) {
 }
 
 export default async function handler(req, res) {
+  // Cron diário da Vercel (mesmo critério de api/backup.js).
+  if (req.method === 'GET') {
+    const doCron = !!req.headers['x-vercel-cron'] || (process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`);
+    if (!doCron) return res.status(401).json({ error: 'Não autorizado.' });
+    try {
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      return res.status(200).json({ ok: true, ...(await sincronizarAbertas(admin)) });
+    } catch (err) {
+      console.error('Erro na sincronização diária do Inter:', err?.message || err);
+      return res.status(500).json({ error: 'Falha na sincronização.' });
+    }
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método não permitido' });
     return;

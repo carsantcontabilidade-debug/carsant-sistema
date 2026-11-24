@@ -121,6 +121,7 @@ export default function Cobrancas() {
   const [filtroMes, setFiltroMes] = usePersistedState("carsant_cobrancas_filtroMes", mesAtual);
   const [filtroPeriodoTodos, setFiltroPeriodoTodos] = usePersistedState("carsant_cobrancas_periodoTodos", false);
   const [filtroBaseMes, setFiltroBaseMes] = usePersistedState("carsant_cobrancas_baseMes", "competencia");
+  const [sincronizando, setSincronizando] = useState(null); // { atual, total } | null
   const [loadingClientes, setLoadingClientes] = useState(clientes.length === 0);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
   const primeiraCargaCobrancas = useRef(true);
@@ -640,6 +641,58 @@ export default function Cobrancas() {
       setErro(`Erro ao atualizar: ${e.message}`);
     }
     setProcessando(false);
+  }
+
+  // Reconsulta no Inter TODAS as cobranças em aberto (não só as da tela) e
+  // corrige o status — rede de segurança para quando o aviso (webhook) do
+  // Inter não chegou e a cobrança paga continuava "gerada/vencida".
+  async function sincronizarComInter() {
+    setErro("");
+    setSucesso("");
+    setSincronizando({ atual: 0, total: 0 });
+    try {
+      const { data: abertas, error: errBusca } = await supabase
+        .from("cobrancas")
+        .select("id, status, codigo_solicitacao, codigo_barras, linha_digitavel, pix_copia_cola, clientes(nome)")
+        .in("status", ["gerada", "vencida"])
+        .not("codigo_solicitacao", "is", null)
+        .order("vencimento", { ascending: true });
+      if (errBusca) throw new Error(errBusca.message);
+      const lista = abertas || [];
+      let pagas = 0, canceladas = 0, outras = 0;
+      const falhas = [];
+      for (let i = 0; i < lista.length; i++) {
+        const cob = lista[i];
+        setSincronizando({ atual: i + 1, total: lista.length });
+        try {
+          const resultado = await chamarEdgeFunction("consultar_cobranca", { codigoSolicitacao: cob.codigo_solicitacao });
+          const novoStatus = mapearSituacaoInter(resultado.situacao);
+          if (novoStatus === cob.status) continue;
+          const payload = {
+            status: novoStatus,
+            paga_em: novoStatus === "paga" ? new Date().toISOString() : null,
+            codigo_barras: resultado.codigoBarras || cob.codigo_barras,
+            linha_digitavel: resultado.linhaDigitavel || cob.linha_digitavel,
+            pix_copia_cola: resultado.pixCopiaECola || cob.pix_copia_cola,
+          };
+          if (novoStatus === "paga") payload.forma_pagamento = "inter";
+          const { error: errUp } = await supabase.from("cobrancas").update(payload).eq("id", cob.id);
+          if (errUp) throw new Error(errUp.message);
+          if (novoStatus === "paga") pagas++;
+          else if (novoStatus === "cancelada") canceladas++;
+          else outras++;
+        } catch (e) {
+          falhas.push(`${cob.clientes?.nome || cob.id}: ${e.message}`);
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      carregarCobrancas();
+      setSucesso(`Sincronizado com o Inter: ${lista.length} em aberto conferidas — ${pagas} paga(s), ${canceladas} cancelada(s), ${outras} outra(s) atualizada(s).`);
+      if (falhas.length) setErro(`Falha em ${falhas.length}: ${falhas.slice(0, 5).join(" | ")}${falhas.length > 5 ? " ..." : ""}`);
+    } catch (e) {
+      setErro(`Erro ao sincronizar: ${e.message}`);
+    }
+    setSincronizando(null);
   }
 
   // Cobrança que ficou travada em "pendente" (sem codigo_solicitacao)
@@ -1193,6 +1246,9 @@ export default function Cobrancas() {
               )}
             </div>
             <div className="flex items-center gap-3">
+              <button onClick={sincronizarComInter} disabled={!!sincronizando} title="Reconsulta no Banco Inter todas as cobranças em aberto e corrige as que já foram pagas/canceladas" className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                {sincronizando ? `Sincronizando ${sincronizando.atual}/${sincronizando.total}...` : "🔄 Sincronizar com o Inter"}
+              </button>
               <select value={filtroPeriodoTodos ? "todos" : "mes"} onChange={e => setFiltroPeriodoTodos(e.target.value === "todos")} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="mes">Mês específico</option>
                 <option value="todos">Todo o período</option>

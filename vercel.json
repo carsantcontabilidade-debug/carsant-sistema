@@ -4,6 +4,7 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/backup", "schedule": "0 6 * * 1" }
+    { "path": "/api/backup", "schedule": "0 6 * * 1" },
+    { "path": "/api/inter-webhook", "schedule": "0 11 * * *" }
   ]
 }
