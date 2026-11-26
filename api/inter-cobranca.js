@@ -127,7 +127,13 @@ export default async function handler(req, res) {
 
     res.status(200).json(resultado);
   } catch (err) {
-    const mensagem = err?.body?.detail || err?.body?.message || err?.body?.error_description || JSON.stringify(err?.body) || 'Erro desconhecido na integração com o Banco Inter.';
+    // O Inter manda o motivo real em "violacoes" (campo + razão); sem isso
+    // só aparece a mensagem genérica "Verifique se os dados informados...".
+    const violacoes = Array.isArray(err?.body?.violacoes)
+      ? err.body.violacoes.map(v => `${v.propriedade}: ${v.razao}`).join('; ')
+      : '';
+    const mensagemBase = err?.body?.detail || err?.body?.message || err?.body?.error_description || JSON.stringify(err?.body) || 'Erro desconhecido na integração com o Banco Inter.';
+    const mensagem = violacoes ? `${mensagemBase} (${violacoes})` : mensagemBase;
     res.status(200).json({ error: mensagem });
   }
 }

@@ -382,21 +382,24 @@ export default function Cobrancas() {
         // cadastrados com CPF).
         cpfCnpj: documentoLimpo || "00000000000000",
         tipoPessoa: documentoLimpo.length === 11 ? "FISICA" : "JURIDICA",
-        nome: cliente?.nome,
-        email: cliente?.["email"] || cliente?.email2 || "",
+        // Limites de tamanho da API v3 do Inter (acima disso ele recusa a
+        // cobrança inteira com "Verifique se os dados informados..."):
+        // nome 100, email 50, endereco 100, numero 10, bairro 60, cidade 60.
+        nome: (cliente?.nome || "").trim().slice(0, 100),
+        email: (cliente?.["email"] || cliente?.email2 || "").split(/[;,\s]+/)[0].slice(0, 50),
         // Antes ia sempre um endereço fixo da CARSANT (Feira de Santana,
         // S/N, Centro) pra QUALQUER cliente — nunca usava o endereço real
         // cadastrado. Corrigido em 25/08/2026: usa o endereço do cliente
         // quando existe, só cai no padrão da CARSANT se o cliente ainda
         // não tiver endereço cadastrado (clientes antigos).
-        endereco: cliente?.logradouro || "Feira de Santana",
-        cidade: nomeMunicipioCliente,
+        endereco: (cliente?.logradouro || "Feira de Santana").slice(0, 100),
+        cidade: String(nomeMunicipioCliente).slice(0, 60),
         uf: cliente?.uf || "BA",
         cep: cliente?.cep?.replace(/\D/g, "") || "44000000",
-        numero: cliente?.numero_endereco || "S/N",
-        bairro: cliente?.bairro || "Centro",
+        numero: String(cliente?.numero_endereco || "S/N").slice(0, 10),
+        bairro: (cliente?.bairro || "Centro").slice(0, 60),
       },
-      mensagem: { linha1: descricao, linha2: "CARSANT Contabilidade", linha3: "Feira de Santana, BA" },
+      mensagem: { linha1: String(descricao).slice(0, 78), linha2: "CARSANT Contabilidade", linha3: "Feira de Santana, BA" },
       dataVencimento: vencimento,
       valorNominal: parseFloat(String(valor).replace(",", ".")),
       numDiasAgenda: 60,
